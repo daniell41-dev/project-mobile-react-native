@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native projects generados por `expo prebuild` (Continuous Native Generation)
+# Se regeneran siempre desde src/ + modules/ + plugins/ — no se versionan.
+/android
+/ios
+
+# Gradle / Android (por si se versiona /android puntualmente)
+*.hprof
+.gradle/
+local.properties
+*.keystore
+*.jks
+!debug.keystore
+
+# Xcode / CocoaPods (por si se versiona /ios puntualmente)
+*.xcworkspace
+*.xcuserstate
+Pods/
+*.ipa
+
+# Metro / React Native
+.metro-health-check*
+*.jsbundle
+
+# Testing
+/coverage
+
+# Environments con secretos
+.env
+.env.local
+*.local.ts
+
+# EAS
+credentials.json
+
+# macOS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/*
+!.vscode/extensions.json
