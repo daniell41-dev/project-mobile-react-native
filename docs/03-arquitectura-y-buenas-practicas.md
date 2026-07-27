@@ -22,10 +22,12 @@ tanto en la capa TypeScript como en la capa nativa (Kotlin/Swift).
 │   └── indigo-device/
 ├── plugins/                    # Config plugins TS (permisos, manifest, Info.plist)
 ├── src/
-│   ├── app/
-│   │   ├── App.tsx             # Providers + NavigationContainer
-│   │   ├── providers/          # ThemeProvider, QueryProvider
-│   │   └── navigation/         # RootNavigator, AuthNavigator, TabNavigator, stacks/, types.ts
+│   ├── bootstrap/               # Punto de entrada de la app (NO se llama "app": Expo CLI
+│   │   │                        # trata cualquier carpeta "app"/"src/app" como raíz de
+│   │   │                        # Expo Router, y este proyecto usa React Navigation explícito)
+│   │   ├── App.tsx              # Providers + NavigationContainer
+│   │   ├── providers/           # ThemeProvider, QueryProvider
+│   │   └── navigation/          # RootNavigator, AuthNavigator, TabNavigator, stacks/, types.ts
 │   ├── core/                   # Lógica singleton de toda la app
 │   │   ├── models/             # Transaction, Card, Contact, User, ...
 │   │   ├── services/           # AuthService, ThemeService, BiometricsService, ...
