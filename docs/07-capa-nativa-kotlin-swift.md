@@ -899,8 +899,22 @@ sección 8 para el detalle del `signingConfig` inyectado por `plugins/withIndigo
   `test_spec` (biometrics, secure-store, card-view, connectivity) de una vez — el mismo
   problema habría salido, uno por uno, en cada uno de los cuatro esquemas.
 
+**Y una ronda más — `./gradlew test`, no solo `assembleDebug`.** Con `assembleDebug` en verde,
+`./gradlew test` reveló que **ningún** módulo con `build.gradle` propio (`indigo-biometrics`,
+`indigo-secure-store`, `indigo-card-view`, `indigo-connectivity`) declaraba una dependencia de
+JUnit — `testImplementation 'junit:junit:...'` simplemente no estaba en ninguno de los cuatro.
+`IndigoBiometricsModuleTest.kt` fue el primero en compilarse y el primero en fallar
+(`Unresolved reference 'junit'` en cada `import org.junit.*`), pero el mismo problema esperaba,
+idéntico, en los otros tres — se corrigió en los cuatro `build.gradle` de una vez, no solo en el
+que falló primero. De paso, `modules/indigo-device/android/src/test/...` (el único módulo sin
+`build.gradle` propio, copiado directo a `:app`) tampoco tenía forma de compilarse: a diferencia
+de `src/main/`, `plugins/withIndigoDevice.ts` no copiaba `src/test/` a ningún lado —
+`IndigoDeviceModuleTest.kt` llevaba dos fases como código muerto, sin que nada lo compilara ni
+lo corriera. Se agregó el mismo copiado, ahora hacia `android/app/src/test/java/...` (el
+`src/test/` propio de `:app`, que sí existe como cualquier módulo Android normal).
+
 **La lección de conjunto de esta fase:** cinco módulos nativos, escritos y razonados a lo largo
-de seis fases sin poder compilarlos ni una sola vez, tenían **ocho bugs reales** esperando —
+de seis fases sin poder compilarlos ni una sola vez, tenían **diez bugs reales** esperando —
 ninguno de diseño, todos de "esto no se verificó nunca de punta a punta". Ese es exactamente el
 argumento a favor de esta fase: la capa nativa de un proyecto sin CI que la compile de verdad no
 está terminada, por bien razonada que esté cada pieza por separado.

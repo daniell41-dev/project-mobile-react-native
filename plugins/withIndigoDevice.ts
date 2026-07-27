@@ -27,6 +27,7 @@ import { mergeContents } from '@expo/config-plugins/build/utils/generateCode';
 
 const ANDROID_PACKAGE_PATH = 'dev/daniell/indigo/modules/device';
 const ANDROID_SOURCE_DIR = 'modules/indigo-device/android/src/main/java/dev/daniell/indigo/modules/device';
+const ANDROID_TEST_SOURCE_DIR = 'modules/indigo-device/android/src/test/java/dev/daniell/indigo/modules/device';
 const IOS_SOURCE_DIR = 'modules/indigo-device/ios';
 const IOS_TARGET_SUBDIR = 'IndigoDevice';
 
@@ -104,6 +105,22 @@ const withIndigoDeviceAndroidSources: ConfigPlugin = (config) =>
         ANDROID_PACKAGE_PATH,
       );
       copyDirSync(from, to);
+
+      // El JUnit de este módulo (IndigoDeviceModuleTest.kt) vive en modules/ junto al
+      // resto del código -- a diferencia del lado iOS (donde Tests/ se deja fuera a
+      // propósito, ver docs/07 sección 4.6), :app SÍ tiene su propio source set
+      // src/test/java/ por ser un módulo Gradle normal, así que copiarlo ahí es
+      // suficiente para que ./gradlew test lo recoja, sin necesitar un módulo separado.
+      const testFrom = path.join(config.modRequest.projectRoot, ANDROID_TEST_SOURCE_DIR);
+      const testTo = path.join(
+        config.modRequest.platformProjectRoot,
+        'app/src/test/java',
+        ANDROID_PACKAGE_PATH,
+      );
+      if (fs.existsSync(testFrom)) {
+        copyDirSync(testFrom, testTo);
+      }
+
       generateIndigoDeviceCodegenSpec(
         config.modRequest.projectRoot,
         config.modRequest.platformProjectRoot,

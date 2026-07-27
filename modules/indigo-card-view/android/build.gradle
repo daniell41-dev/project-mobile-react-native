@@ -35,4 +35,8 @@ dependencies {
   // Misma versión que ya usa expo-modules-core internamente (ver su propio
   // android/build.gradle) — evita conflictos de resolución de versiones de Compose.
   implementation 'androidx.compose.foundation:foundation-android:1.7.6'
+  // Sin esto, ./gradlew test ni siquiera compila IndigoCardViewTest.kt --
+  // "Unresolved reference 'junit'" en cada import de org.junit.*. Confirmado real en CI
+  // (android.yml): faltaba en los 4 módulos con build.gradle propio.
+  testImplementation 'junit:junit:4.13.2'
 }

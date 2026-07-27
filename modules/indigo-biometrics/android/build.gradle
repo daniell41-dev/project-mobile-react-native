@@ -19,4 +19,9 @@ android {
 
 dependencies {
   implementation 'androidx.biometric:biometric:1.1.0'
+  // Sin esto, ./gradlew test ni siquiera compila IndigoBiometricsModuleTest.kt --
+  // "Unresolved reference 'junit'" en cada import de org.junit.*. Confirmado real en CI
+  // (android.yml): faltaba en los 4 módulos con build.gradle propio (biometrics,
+  // secure-store, card-view, connectivity), no solo en este.
+  testImplementation 'junit:junit:4.13.2'
 }

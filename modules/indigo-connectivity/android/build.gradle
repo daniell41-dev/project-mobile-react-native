@@ -16,3 +16,10 @@ android {
     abortOnError false
   }
 }
+
+dependencies {
+  // Sin esto, ./gradlew test ni siquiera compila IndigoConnectivityModuleTest.kt --
+  // "Unresolved reference 'junit'" en cada import de org.junit.*. Confirmado real en CI
+  // (android.yml): faltaba en los 4 módulos con build.gradle propio.
+  testImplementation 'junit:junit:4.13.2'
+}
