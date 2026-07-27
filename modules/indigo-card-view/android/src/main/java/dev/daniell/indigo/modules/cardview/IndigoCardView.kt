@@ -84,18 +84,23 @@ private fun CardContent(
 class IndigoCardView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
   val onPress by EventDispatcher<Unit>()
 
-  private var holderName by mutableStateOf("")
-  private var last4 by mutableStateOf("")
-  private var frozen by mutableStateOf(false)
-  private var accentColor by mutableStateOf(DEFAULT_ACCENT_COLOR)
+  // Sufijo "State" a propósito: `by mutableStateOf(...)` genera un setHolderName(String)
+  // sintético para la propiedad delegada aunque sea `private` -- choca en JVM (mismo
+  // nombre + firma, "platform declaration clash") con el setHolderName(String) público de
+  // más abajo que exige ExpoView para el prop de Fabric. Confirmado real en CI:
+  // ./gradlew compileDebugKotlin fallaba con ese clash antes de este rename.
+  private var holderNameState by mutableStateOf("")
+  private var last4State by mutableStateOf("")
+  private var frozenState by mutableStateOf(false)
+  private var accentColorState by mutableStateOf(DEFAULT_ACCENT_COLOR)
 
   private val composeView = ComposeView(context).apply {
     setContent {
       CardContent(
-        holderName = holderName,
-        last4 = last4,
-        frozen = frozen,
-        accentColor = accentColor,
+        holderName = holderNameState,
+        last4 = last4State,
+        frozen = frozenState,
+        accentColor = accentColorState,
         onPress = { onPress(Unit) }
       )
     }
@@ -106,18 +111,18 @@ class IndigoCardView(context: Context, appContext: AppContext) : ExpoView(contex
   }
 
   fun setHolderName(value: String) {
-    holderName = value
+    holderNameState = value
   }
 
   fun setLast4(value: String) {
-    last4 = value
+    last4State = value
   }
 
   fun setFrozen(value: Boolean) {
-    frozen = value
+    frozenState = value
   }
 
   fun setAccentColor(value: String) {
-    accentColor = parseAccentColor(value)
+    accentColorState = parseAccentColor(value)
   }
 }

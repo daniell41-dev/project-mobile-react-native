@@ -2,7 +2,11 @@ import ExpoModulesCore
 import SwiftUI
 import UIKit
 
-private let defaultAccentColor = Color(red: 0x82.0 / 255, green: 0x0A.0 / 255, blue: 0xD1.0 / 255)
+// Double(0x82) en vez de 0x82.0: un literal hex con ".0" sin exponente "p" no es un hex
+// float válido en Swift -- confundía la resolución de sobrecarga de Color(red:green:blue:)
+// (el compilador terminaba probando el init(_:white:opacity:) equivocado). Confirmado real
+// en CI: xcodebuild fallaba con "missing argument for parameter 'white' in call".
+private let defaultAccentColor = Color(red: Double(0x82) / 255, green: Double(0x0A) / 255, blue: Double(0xD1) / 255)
 
 // Función libre (no un método privado), igual que en indigo-biometrics/indigo-secure-store:
 // la única lógica de esta vista testeable con XCTest sin un árbol de SwiftUI real.
