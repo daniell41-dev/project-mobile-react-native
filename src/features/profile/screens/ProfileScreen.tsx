@@ -6,6 +6,7 @@ import { Alert, StyleSheet, Switch, View } from 'react-native';
 import { ProfileStackParamList } from '@/bootstrap/navigation/types';
 import { BiometricsService } from '@/core/services/biometrics.service';
 import { DataService } from '@/core/services/data.service';
+import { DeviceService } from '@/core/services/device.service';
 import { useAuthStore } from '@/core/stores/auth.store';
 import { useThemeStore } from '@/core/stores/theme.store';
 import { AppText } from '@/shared/components/AppText';
@@ -37,6 +38,20 @@ function biometryTypeLabel(type: BiometryType): string {
 }
 
 const BIOMETRICS_AUTH_REASON = 'Confirma tu identidad para activar el desbloqueo biométrico';
+
+async function handleShowDeviceDiagnostics() {
+  // getDeviceName/isTablet son síncronos (JSI, TurboModule "bare" — modules/indigo-device,
+  // FASE 9); getBatteryLevelAsync es async, como cualquier método que devuelve Promise.
+  const deviceName = DeviceService.getDeviceName();
+  const deviceType = DeviceService.isTablet() ? 'Tablet' : 'Teléfono';
+  const batteryLevel = await DeviceService.getBatteryLevelAsync();
+  const batteryText = batteryLevel >= 0 ? `${Math.round(batteryLevel)}%` : 'No disponible';
+
+  Alert.alert(
+    'Diagnóstico del dispositivo',
+    `Dispositivo: ${deviceName}\nTipo: ${deviceType}\nBatería: ${batteryText}`,
+  );
+}
 
 export function ProfileScreen(_props: Props) {
   const theme = useTheme();
@@ -163,6 +178,12 @@ export function ProfileScreen(_props: Props) {
           leading={<Ionicons name="help-circle-outline" size={20} color={theme.colors.textDim} />}
           detail
           onPress={() => comingSoon('Ayuda y soporte')}
+        />
+        <ListRow
+          title="Diagnóstico del dispositivo"
+          leading={<Ionicons name="hardware-chip-outline" size={20} color={theme.colors.textDim} />}
+          detail
+          onPress={handleShowDeviceDiagnostics}
         />
       </View>
 

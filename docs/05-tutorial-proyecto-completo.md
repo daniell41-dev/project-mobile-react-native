@@ -7,7 +7,7 @@
 ## Estado actual
 
 **Bloque A (fundación JS/UI) completo: FASES 0–4.** El Bloque B (capa nativa Kotlin/Swift,
-FASES 5–11) es el eje del proyecto y ya tiene tres módulos nativos reales (FASES 6–8) — ver
+FASES 5–11) es el eje del proyecto y ya tiene cuatro módulos nativos reales (FASES 6–9) — ver
 `docs/04-roadmap-y-fases.md`.
 
 | Fase | Contenido | Estado |
@@ -21,6 +21,7 @@ FASES 5–11) es el eje del proyecto y ya tiene tres módulos nativos reales (FA
 | FASE 6 | Módulo nativo `indigo-biometrics`: Kotlin (BiometricPrompt) + Swift (LAContext) | ✅ |
 | FASE 7 | Módulo nativo `indigo-secure-store`: Keystore + `EncryptedSharedPreferences` / Keychain | ✅ |
 | FASE 8 | Módulo nativo `indigo-card-view`: vista Fabric, Jetpack Compose + SwiftUI | ✅ |
+| FASE 9 | TurboModule "bare" `indigo-device`: sin Expo Modules API, Codegen verificado local | ✅ |
 
 ---
 
@@ -142,6 +143,21 @@ flujo de props funciona de punta a punta — el render nativo real de Compose/Sw
 cuando haya un dispositivo/emulador o CI (FASE 11). Decisiones de diseño (por qué se eligió la
 API clásica de vistas sobre la más nueva basada en `coreFeatures: compose`) en
 `docs/07-capa-nativa-kotlin-swift.md` sección 4.3.
+
+## Módulo nativo "bare" sin Expo Modules API (FASE 9)
+
+`modules/indigo-device` es distinto a los tres anteriores: no usa Expo Modules API en
+absoluto. Es el camino "de verdad" de React Native — spec TypeScript, `codegenConfig` en el
+`package.json` raíz, Codegen genera la clase Kotlin/el protocolo Objective-C++, y la
+implementación + el registro (`MainApplication.kt`, `.pbxproj`) se hacen a mano vía
+`plugins/withIndigoDevice.ts`. `getDeviceName()`/`isTablet()` son síncronos (posible gracias a
+JSI, imposible con el bridge legado) y `getBatteryLevelAsync()` es async. Verificado corriendo
+el propio script de Codegen de React Native localmente (`node node_modules/react-native/
+scripts/generate-codegen-artifacts.js`, no necesita Android SDK ni Xcode) — la implementación
+está escrita contra la salida real que generó, no contra una suposición. También se verificó
+que `expo prebuild` deja `MainApplication.kt` y el `.pbxproj` correctamente modificados.
+Detalle completo, incluyendo por qué iOS no necesita tocar `AppDelegate.swift` pero Android sí,
+en `docs/07-capa-nativa-kotlin-swift.md` sección 4.4.
 
 ## Qué se puede verificar en este entorno (sin Mac, sin emulador Android)
 
