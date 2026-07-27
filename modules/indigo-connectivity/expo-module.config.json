@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["IndigoConnectivityModule"]
+  },
+  "android": {
+    "modules": ["dev.daniell.indigo.modules.connectivity.IndigoConnectivityModule"]
+  }
+}

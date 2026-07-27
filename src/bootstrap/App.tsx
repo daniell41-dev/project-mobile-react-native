@@ -18,6 +18,7 @@ import { QueryProvider } from '@/bootstrap/providers/QueryProvider';
 import { RootNavigator } from '@/bootstrap/navigation/RootNavigator';
 import { toNavigationTheme } from '@/bootstrap/navigation/navigationTheme';
 import { useAuthStore } from '@/core/stores/auth.store';
+import { OfflineBanner } from '@/shared/components/OfflineBanner';
 import { useTheme } from '@/shared/hooks/useTheme';
 
 SplashScreen.preventAutoHideAsync();
@@ -73,6 +74,7 @@ function NavigationContainerWithTheme() {
     <NavigationContainer theme={toNavigationTheme(theme)}>
       <View style={{ flex: 1, backgroundColor: theme.colors.bg }}>
         <RootNavigator />
+        <OfflineBanner />
       </View>
     </NavigationContainer>
   );

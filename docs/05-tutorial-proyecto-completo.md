@@ -7,7 +7,7 @@
 ## Estado actual
 
 **Bloque A (fundación JS/UI) completo: FASES 0–4.** El Bloque B (capa nativa Kotlin/Swift,
-FASES 5–11) es el eje del proyecto y ya tiene cuatro módulos nativos reales (FASES 6–9) — ver
+FASES 5–11) es el eje del proyecto y ya tiene cinco módulos nativos reales (FASES 6–10) — ver
 `docs/04-roadmap-y-fases.md`.
 
 | Fase | Contenido | Estado |
@@ -22,6 +22,7 @@ FASES 5–11) es el eje del proyecto y ya tiene cuatro módulos nativos reales (
 | FASE 7 | Módulo nativo `indigo-secure-store`: Keystore + `EncryptedSharedPreferences` / Keychain | ✅ |
 | FASE 8 | Módulo nativo `indigo-card-view`: vista Fabric, Jetpack Compose + SwiftUI | ✅ |
 | FASE 9 | TurboModule "bare" `indigo-device`: sin Expo Modules API, Codegen verificado local | ✅ |
+| FASE 10 | Módulo nativo `indigo-connectivity`: `callbackFlow`/`AsyncStream` como evento suscribible | ✅ |
 
 ---
 
@@ -158,6 +159,30 @@ está escrita contra la salida real que generó, no contra una suposición. Tamb
 que `expo prebuild` deja `MainApplication.kt` y el `.pbxproj` correctamente modificados.
 Detalle completo, incluyendo por qué iOS no necesita tocar `AppDelegate.swift` pero Android sí,
 en `docs/07-capa-nativa-kotlin-swift.md` sección 4.4.
+
+## Módulo nativo con eventos: conectividad (FASE 10)
+
+`modules/indigo-connectivity` vuelve a Expo Modules API, pero es el primer módulo del proyecto
+que expone un **stream continuo** en vez de funciones puntuales: el estado de la red cambia solo,
+sin que JS lo pida. Kotlin envuelve `ConnectivityManager.NetworkCallback` (basado en callbacks) en
+un `Flow` frío con `callbackFlow { ... awaitClose { } }`; Swift hace exactamente lo mismo con
+`NWPathMonitor` y `AsyncStream`. Ambos se conectan al sistema de eventos de Expo Modules
+(`Events("onConnectivityChange")` + `OnStartObserving`/`OnStopObserving` + `sendEvent(...)`), que
+arranca y para el monitor nativo real según haya o no listeners JS activos. Del lado TS, es el
+primer módulo que declara `NativeModule<TEventsMap>` con un evento tipado (los anteriores usan
+`NativeModule<{}>`), así que `addListener`/`emit` quedan tipados de punta a punta.
+
+El fallback web es distinto al de los módulos anteriores: en vez de un stub "no disponible" fijo
+(no hay Face ID ni Keystore en un navegador), aquí sí hay una señal real —
+`navigator.onLine` + eventos `online`/`offline` de `window` — así que `IndigoConnectivity.web.ts`
+dispara el mismo evento `onConnectivityChange` que el lado nativo. `core/services/
+connectivity.service.ts` + `shared/hooks/useConnectivity.ts` + un `OfflineBanner` montado una vez
+en `App.tsx` (visible en las 10 pantallas sin tocarlas una por una) consumen ese stream.
+Verificado en vivo con Playwright alternando `context.setOffline(true/false)` sobre la demo web:
+el banner "Sin conexión a internet" aparece y desaparece en tiempo real. Detalle completo,
+incluyendo un desajuste de tipos real en `registerWebModule` de `expo-modules-core` (declara que
+devuelve la clase, pero en runtime devuelve una instancia) y cómo se corrigió con un cast
+documentado, en `docs/07-capa-nativa-kotlin-swift.md` sección 4.5.
 
 ## Qué se puede verificar en este entorno (sin Mac, sin emulador Android)
 

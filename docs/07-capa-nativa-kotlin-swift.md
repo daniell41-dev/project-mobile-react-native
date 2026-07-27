@@ -553,6 +553,167 @@ web: tocar la fila no lanza ningún error de página.
 que en las FASES 6-8, cubiertas por JUnit y XCTest respectivamente (no ejecutables localmente,
 igual que el resto de la capa nativa — quedan para CI en la FASE 11).
 
+### 4.5 `indigo-connectivity` (FASE 10) — corrutinas, Flow y AsyncStream
+
+Vuelve a Expo Modules API (como las FASES 6-8, a diferencia del TurboModule "bare" de la FASE 9),
+pero resuelve un problema distinto: los módulos anteriores exponen **funciones** (`isAvailable()`,
+`getItem(key)`...) que JS llama y esperan una respuesta puntual. Este módulo expone un **stream
+continuo** — el estado de la red cambia por su cuenta, sin que JS lo pida — así que la pieza nueva
+no es la llamada nativa en sí, sino cómo una API nativa *basada en callbacks* se convierte en algo
+que un `for`/`while` async puede consumir, y cómo ese consumo se apaga solo cuando nadie del lado
+JS está escuchando.
+
+**Kotlin — `callbackFlow`:**
+
+```kotlin
+fun observeConnectivity(context: Context): Flow<ConnectivityState> = callbackFlow {
+  val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
+  val callback = object : ConnectivityManager.NetworkCallback() {
+    override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+      trySend(connectivityStateFromCapabilities(capabilities))
+    }
+    override fun onLost(network: Network) {
+      trySend(ConnectivityState(isConnected = false, type = "none"))
+    }
+  }
+  connectivityManager.registerDefaultNetworkCallback(callback)
+  awaitClose { connectivityManager.unregisterNetworkCallback(callback) }
+}.distinctUntilChanged()
+```
+
+`ConnectivityManager.NetworkCallback` es una API basada en callbacks — no hay forma de hacer
+`for (state in connectivityManager.states())` directamente. `callbackFlow` es el puente estándar
+de las corrutinas para este caso: un `Flow` "frío" (no arranca hasta que alguien lo colecta) que
+además es un `ProducerScope`, así que dentro se puede llamar `trySend(...)` desde el callback de
+Android (que corre en el hilo que Android elija, no en el de la corrutina) sin bloquear. `awaitClose
+{ }` es la garantía de limpieza: se ejecuta siempre que el `Flow` se cancela — sea porque el
+colector dejó de escuchar, sea porque la corrutina que lo colecta se cancela por cualquier otra
+razón — así que `unregisterNetworkCallback` nunca se olvida, sin necesidad de un `try/finally`
+manual. `distinctUntilChanged()` evita reenviar el mismo estado dos veces seguidas (Android puede
+disparar `onCapabilitiesChanged` más de una vez para la misma red real).
+
+**Swift — `AsyncStream`, la contraparte exacta:**
+
+```swift
+private func connectivityUpdates() -> AsyncStream<ConnectivityState> {
+  AsyncStream { continuation in
+    let monitor = NWPathMonitor()
+    let queue = DispatchQueue(label: "dev.daniell.indigo.modules.connectivity")
+    monitor.pathUpdateHandler = { path in
+      continuation.yield(connectivityState(from: path))
+    }
+    continuation.onTermination = { _ in monitor.cancel() }
+    monitor.start(queue: queue)
+  }
+}
+```
+
+`NWPathMonitor.pathUpdateHandler` es, otra vez, un callback — el mismo problema que en Android.
+`AsyncStream` es la respuesta de Swift: su *builder closure* recibe una `continuation` sobre la que
+se llama `.yield(...)` desde el callback de `Network.framework`, y `continuation.onTermination`
+es el `awaitClose` de Swift — se dispara cuando el `for await` que consume el stream se cancela,
+y ahí se llama `monitor.cancel()`. La correspondencia Kotlin↔Swift es 1:1: `callbackFlow` ↔
+`AsyncStream`, `trySend`/`yield` para emitir, `awaitClose`/`onTermination` para limpiar.
+
+**Exponer el stream como evento de Expo Modules, no como el `Flow`/`AsyncStream` en sí** — JS no
+puede consumir un `Flow` ni un `AsyncStream` directamente; el puente es el sistema de eventos que
+ya trae `ModuleDefinition`:
+
+```kotlin
+Events("onConnectivityChange")
+
+OnStartObserving("onConnectivityChange") {
+  observationJob = moduleScope.launch {
+    observeConnectivity(appContext.reactContext!!).collect { state ->
+      sendEvent("onConnectivityChange", state.toMap())
+    }
+  }
+}
+OnStopObserving("onConnectivityChange") {
+  observationJob?.cancel()
+}
+```
+
+```swift
+OnStartObserving("onConnectivityChange") {
+  observationTask = Task {
+    for await state in connectivityUpdates() {
+      sendEvent("onConnectivityChange", connectivityStateDict(state))
+    }
+  }
+}
+OnStopObserving("onConnectivityChange") {
+  observationTask?.cancel()
+}
+```
+
+`OnStartObserving`/`OnStopObserving` se disparan automáticamente cuando el primer/último listener
+JS se suscribe/desuscribe (`addListener`/`removeListener` del lado JS, ver más abajo) — así que el
+`NetworkCallback`/`NWPathMonitor` real solo vive mientras algo en JS de verdad lo está escuchando,
+igual de "lazy" que un `Flow` frío por diseño. Cancelar el `Job`/`Task` en `OnStopObserving`
+propaga la cancelación hacia abajo hasta `awaitClose`/`onTermination`, que desregistra el callback
+nativo — la cadena completa de limpieza depende de que la cancelación de corrutinas/`Task` se
+propague correctamente, no de un `stop()` explícito.
+
+**El lado TS es lo nuevo frente a las FASES 6-9: `NativeModule<TEventsMap>`.** Todos los módulos
+anteriores declaran `extends NativeModule<{}>` (sin eventos). Este declara
+`extends NativeModule<IndigoConnectivityEvents>`, con
+
+```ts
+export type IndigoConnectivityEvents = {
+  onConnectivityChange: (state: ConnectivityState) => void;
+};
+```
+
+`NativeModule<TEventsMap>` extiende `EventEmitter<TEventsMap>` (`expo-modules-core/src/
+ts-declarations/{NativeModule,EventEmitter}.ts`), así que `addListener('onConnectivityChange',
+listener)`, `removeListener(...)` y `emit(...)` quedan tipados de punta a punta: el nombre del
+evento y la forma del payload se validan en tiempo de compilación, no solo en runtime.
+`core/services/connectivity.service.ts` envuelve `addListener` + el `EventSubscription.remove()`
+que devuelve en una función de desuscripción simple (`() => void`), y
+`shared/hooks/useConnectivity.ts` la consume con `useEffect`, exponiendo el estado a
+`OfflineBanner` (montado una sola vez en `App.tsx`, visible en las 10 pantallas).
+
+**Fallback web genuinamente funcional — distinto a las FASES 6-7.** Face ID/biometría y Keystore
+no tienen equivalente en un navegador, así que sus `.web.ts` son stubs "no disponible" fijos. La
+web **sí** tiene una señal real de conectividad (`navigator.onLine` + eventos `online`/`offline`
+de `window`), así que `IndigoConnectivity.web.ts` la usa de verdad:
+
+```ts
+window.addEventListener('online', () => {
+  IndigoConnectivityModuleWeb.emit('onConnectivityChange', currentWebConnectivityState());
+});
+```
+
+Aquí apareció un desajuste real de tipos en `expo-modules-core`: `registerWebModule(...)` declara
+que devuelve `ModuleType` (el tipo de la propia clase/constructor), pero en runtime devuelve una
+**instancia** (`new moduleImplementation()`, ver `registerWebModule.ts`). Sin corregirlo, TS trata
+el valor devuelto como si fuera la clase en sí y rechaza `.emit(...)` (un método de instancia) con
+`Property 'emit' does not exist on type 'typeof IndigoConnectivityModule'`. Se corrige con un cast
+explícito y documentado en el propio archivo: `as unknown as InstanceType<typeof
+IndigoConnectivityModule>` — el mismo tipo de gotcha cosmético-pero-real que el comentario erróneo
+de `.mm` en el `.pbxproj` de la FASE 9 (sección 4.4): no es un bug de la app, es un límite de la
+librería que hay que conocer y documentar, no silenciar con `any`.
+
+**Verificado sin compilar**, igual que el resto del bloque B: `expo-modules-autolinking resolve
+--platform android/ios --json` confirma que `indigo-connectivity` autolinkea solo en ambas
+plataformas (a diferencia de la FASE 9, este módulo sí tiene `expo-module.config.json`, así que no
+hace falta ningún plugin de registro manual); `expo prebuild --clean` corrió limpio e inyectó
+`android.permission.ACCESS_NETWORK_STATE` en el `AndroidManifest.xml` generado (agregado a
+`plugins/withIndigo.ts`, sección 5 — sin este permiso `ConnectivityManager` devolvería
+`NetworkCapabilities` nulas); y el fallback web se probó **en vivo** con Playwright alternando
+`browserContext.setOffline(true/false)` sobre la demo servida desde `dist/`: el banner "Sin
+conexión a internet" aparece y desaparece en tiempo real, confirmando que el evento
+`online`/`offline` del navegador realmente llega hasta `OfflineBanner` a través de
+`emit`→`addListener`→`useConnectivity`.
+
+**Tests:** `connectivityStateFrom`/`connectivityState` — funciones libres, mismo patrón que las
+FASES 6-9, 6 casos JUnit/XCTest cada una (conectado por wifi/celular/ninguno, wifi con prioridad
+sobre celular cuando ambos transportes están presentes, "unknown" para ethernet/VPN, y el caso
+real de una interfaz técnicamente presente pero sin validación de Internet — portal cautivo).
+`connectivity.service.test.ts` en Jest cubre `getCurrentState`, `subscribe` y que la función de
+desuscripción llame a `EventSubscription.remove()`.
+
 ---
 
 ## 5. Config plugins
@@ -568,9 +729,11 @@ llamar a un one-liner):
 
 - `withAndroidManifest(config, config => ...)` — recibe `config.modResults` ya parseado como
   objeto (el XML se parsea/serializa solo). Se le agregan entradas a
-  `manifest['uses-permission']` para `android.permission.CAMERA` y
-  `android.permission.USE_BIOMETRIC`, sin duplicar si ya existieran (autolinking de otro módulo
-  podría haberlas puesto).
+  `manifest['uses-permission']` para `android.permission.CAMERA`,
+  `android.permission.USE_BIOMETRIC` y (desde la FASE 10)
+  `android.permission.ACCESS_NETWORK_STATE` — sin esta última, `ConnectivityManager` en
+  `modules/indigo-connectivity` devuelve `NetworkCapabilities` nulas en vez de las reales — sin
+  duplicar si ya existieran (autolinking de otro módulo podría haberlas puesto).
 - `withInfoPlist(config, config => ...)` — mismo patrón para iOS: escribe
   `NSCameraUsageDescription` y `NSFaceIDUsageDescription` (obligatorio desde iOS 11 para poder
   usar Face ID; sin este string la app *crashea* al llamar a `LAContext.evaluatePolicy`).
@@ -591,8 +754,11 @@ generación del manifest/plist no lo necesita).
 
 ## 7. Concurrencia nativa (detalle, FASE 10)
 
-*(Coroutines + Flow en Kotlin, async/await + Combine en Swift — con el ejemplo real del módulo de
-la FASE 10.)*
+Ver sección 4.5 (`indigo-connectivity`): `callbackFlow`/`distinctUntilChanged` en Kotlin,
+`AsyncStream`/`continuation.onTermination` en Swift, y cómo ambos se enchufan al sistema de
+eventos de Expo Modules (`Events`/`OnStartObserving`/`OnStopObserving`/`sendEvent`) para que JS
+consuma un stream nativo continuo como una suscripción normal (`addListener`/`emit`, tipada vía
+`NativeModule<TEventsMap>`).
 
 ## 8. Firma y publicación
 
