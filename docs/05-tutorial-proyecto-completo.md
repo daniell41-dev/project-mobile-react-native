@@ -7,7 +7,8 @@
 ## Estado actual
 
 **Bloque A (fundación JS/UI) completo: FASES 0–4.** El Bloque B (capa nativa Kotlin/Swift,
-FASES 5–11) es el eje del proyecto y ya arrancó con la FASE 5 — ver `docs/04-roadmap-y-fases.md`.
+FASES 5–11) es el eje del proyecto y ya tiene su primer módulo nativo real (FASE 6) — ver
+`docs/04-roadmap-y-fases.md`.
 
 | Fase | Contenido | Estado |
 |---|---|---|
@@ -17,6 +18,7 @@ FASES 5–11) es el eje del proyecto y ya arrancó con la FASE 5 — ver `docs/0
 | FASE 3 | Fidelidad visual de las 11 pantallas contra el handoff | ✅ |
 | FASE 4 | Charts reales en Análisis + capa REST (repos + TanStack Query) | ✅ |
 | FASE 5 | Fundamentos nativos: prebuild, recorrido Gradle/Xcode, config plugin propio | ✅ |
+| FASE 6 | Módulo nativo `indigo-biometrics`: Kotlin (BiometricPrompt) + Swift (LAContext) | ✅ |
 
 ---
 
@@ -102,6 +104,16 @@ necesitar los módulos nativos de las FASES 6+ (`CAMERA`, `USE_BIOMETRIC` en And
 mods `withAndroidManifest`/`withInfoPlist`, verificado inspeccionando el manifest/plist que
 genera `expo prebuild`.
 
+## Módulo nativo: biometría (FASE 6)
+
+`modules/indigo-biometrics` es el primer módulo con Expo Modules API: `isAvailable()` y
+`authenticate(reason)`, Kotlin real (`BiometricPrompt` + corrutinas) y Swift real
+(`LAContext` + `withCheckedContinuation`), detrás de `core/services/biometrics.service.ts`
+(alias `@modules/*`). Se usa de verdad en el toggle "Seguridad y biometría" de `ProfileScreen`
+— no es un módulo sin consumir. Recorrido completo, con las decisiones de diseño (por qué
+`authenticate` resuelve en vez de rechazar, por qué `biometryType` es genérico en Android pero
+específico en iOS), en `docs/07-capa-nativa-kotlin-swift.md` sección 4.1.
+
 ## Qué se puede verificar en este entorno (sin Mac, sin emulador Android)
 
 - Lint, typecheck y tests JS: `pnpm lint && pnpm typecheck && pnpm test:ci`.
@@ -109,6 +121,9 @@ genera `expo prebuild`.
   verificado cada fase hasta ahora (flujo completo Onboarding → Login → tabs → Enviar →
   Análisis, en claro y oscuro).
 - `expo prebuild`: sí, genera el árbol nativo completo sin problema.
+- Autolinking de módulos propios: `npx expo-modules-autolinking resolve --platform
+  android|ios --json` — confirma que Gradle/CocoaPods van a encontrar el módulo sin necesitar
+  compilar.
 - Gradle/Kotlin: **parcial en este contenedor concreto** — no hay Android SDK ni acceso a
   `dl.google.com` (bloqueado por el proxy de salida), así que `./gradlew assembleDebug`/`test`
   no compilan aquí, aunque `gradlew --version` sí arranca. Detalle y la razón exacta en

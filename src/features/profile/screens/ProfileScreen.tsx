@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { Alert, StyleSheet, Switch, View } from 'react-native';
 
 import { ProfileStackParamList } from '@/bootstrap/navigation/types';
+import { BiometricsService } from '@/core/services/biometrics.service';
 import { DataService } from '@/core/services/data.service';
 import { useAuthStore } from '@/core/stores/auth.store';
 import { useThemeStore } from '@/core/stores/theme.store';
@@ -14,12 +15,28 @@ import { ListRow } from '@/shared/components/ListRow';
 import { Screen } from '@/shared/components/Screen';
 import { SectionHeader } from '@/shared/components/SectionHeader';
 import { useTheme, useThemeMode } from '@/shared/hooks/useTheme';
+import { BiometryType } from '@modules/indigo-biometrics/src/IndigoBiometrics.types';
 
 type Props = NativeStackScreenProps<ProfileStackParamList, 'Profile'>;
 
 function comingSoon(feature: string) {
   Alert.alert(feature, 'Próximamente en Índigo.');
 }
+
+function biometryTypeLabel(type: BiometryType): string {
+  switch (type) {
+    case 'faceId':
+      return 'Face ID';
+    case 'touchId':
+      return 'Touch ID';
+    case 'biometric':
+      return 'Biometría';
+    default:
+      return 'No disponible en este dispositivo';
+  }
+}
+
+const BIOMETRICS_AUTH_REASON = 'Confirma tu identidad para activar el desbloqueo biométrico';
 
 export function ProfileScreen(_props: Props) {
   const theme = useTheme();
@@ -28,6 +45,31 @@ export function ProfileScreen(_props: Props) {
   const logout = useAuthStore((state) => state.logout);
   const user = DataService.getUser();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [biometrics, setBiometrics] = useState<{ available: boolean; label: string }>({
+    available: false,
+    label: 'Comprobando disponibilidad…',
+  });
+  const [biometricsEnabled, setBiometricsEnabled] = useState(false);
+
+  useEffect(() => {
+    BiometricsService.isAvailable().then(({ available, biometryType }) => {
+      setBiometrics({ available, label: biometryTypeLabel(biometryType) });
+    });
+  }, []);
+
+  async function handleToggleBiometrics(value: boolean) {
+    if (!value) {
+      setBiometricsEnabled(false);
+      return;
+    }
+
+    const result = await BiometricsService.authenticate(BIOMETRICS_AUTH_REASON);
+    if (result.success) {
+      setBiometricsEnabled(true);
+    } else {
+      Alert.alert('No se pudo activar', 'No pudimos confirmar tu identidad. Intenta de nuevo.');
+    }
+  }
 
   return (
     <Screen>
@@ -73,9 +115,16 @@ export function ProfileScreen(_props: Props) {
       />
       <ListRow
         title="Seguridad y biometría"
+        subtitle={biometrics.label}
         leading={<Ionicons name="shield-checkmark-outline" size={20} color={theme.colors.textDim} />}
-        detail
-        onPress={() => comingSoon('Seguridad y biometría')}
+        trailing={
+          <Switch
+            value={biometricsEnabled}
+            onValueChange={handleToggleBiometrics}
+            disabled={!biometrics.available}
+            accessibilityLabel="Desbloqueo biométrico"
+          />
+        }
       />
 
       <View style={styles.section}>

@@ -79,9 +79,13 @@ compila aquí (sí se generó y se inspeccionó el proyecto) — detalle en `doc
 `docs/02` PARTE 4.1.
 
 ### FASE 6 — Módulo nativo nº1: biometría (`modules/indigo-biometrics`)
-Kotlin: `androidx.biometric.BiometricPrompt` + corrutinas. Swift: `LocalAuthentication`/
-`LAContext`. API `isAvailable()` / `authenticate(reason)`, consumida vía
-`core/services/biometrics.service.ts`. Tests JUnit + mock en Jest.
+Kotlin: `androidx.biometric.BiometricPrompt` + corrutinas (`AsyncFunction ... Coroutine { }`).
+Swift: `LocalAuthentication`/`LAContext` + `withCheckedContinuation`. API `isAvailable()` /
+`authenticate(reason)`, consumida vía `core/services/biometrics.service.ts` y usada de verdad
+en el toggle "Seguridad y biometría" de `ProfileScreen`. Tests: JUnit + XCTest del mapeo de
+errores (corren en CI, FASE 11 — sin SDK/Mac local) + mock en Jest. Verificado sin compilar con
+`npx expo-modules-autolinking resolve --platform android/ios --json`. Detalle completo en
+`docs/07` sección 4.1.
 
 ### FASE 7 — Módulo nativo nº2: almacenamiento seguro (`modules/indigo-secure-store`)
 Kotlin: Android Keystore + `EncryptedSharedPreferences` (AES-256-GCM). Swift: Keychain
