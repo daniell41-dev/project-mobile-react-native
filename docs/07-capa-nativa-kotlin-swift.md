@@ -917,6 +917,17 @@ había necesitado hasta ahora): mismo síntoma, mismo arreglo, esta vez inyectad
 `plugins/withIndigoDevice.ts` vía `withAppBuildGradle` + `mergeContents` en vez de a mano en un
 `build.gradle` versionado (el de `:app` es generado).
 
+**El último, y no es de este proyecto.** Con JUnit resuelto en los cinco módulos, `./gradlew
+test` seguía fallando — pero esta vez en `:expo-modules-core:testDebugUnitTest`, un módulo de
+`node_modules`, con "There are test sources present ... but the test task did not discover any
+tests to execute". No es código de Índigo, y no es algo que este proyecto deba (ni pueda, sin
+parchear una dependencia externa) arreglar. La corrección real fue de alcance: `./gradlew test`
+corre el `testDebugUnitTest` de **cada** proyecto del build, incluyendo cada dependencia en
+`node_modules` — `android.yml` pasó a invocar los cinco `testDebugUnitTest` propios por nombre
+(`:indigo-biometrics:testDebugUnitTest`, ..., `:app:testDebugUnitTest`), el alcance real que
+`docs/04` siempre pidió ("JUnit de los 5 módulos Kotlin"), sin arrastrar la configuración de
+test de todo lo demás que este proyecto no controla.
+
 **La lección de conjunto de esta fase:** cinco módulos nativos, escritos y razonados a lo largo
 de seis fases sin poder compilarlos ni una sola vez, tenían **once bugs reales** esperando —
 ninguno de diseño, todos de "esto no se verificó nunca de punta a punta". Ese es exactamente el

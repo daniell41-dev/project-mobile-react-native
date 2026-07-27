@@ -73,7 +73,14 @@ Dos jobs. `build-and-test` corre en cada PR/push a `develop`/`main`:
 - run: npx expo prebuild -p android --clean
 - uses: gradle/actions/setup-gradle@v4
 - run: cd android && ./gradlew assembleDebug   # APK debug, keystore de la plantilla
-- run: cd android && ./gradlew test            # JUnit de los 5 módulos Kotlin
+- run: cd android && ./gradlew :indigo-biometrics:testDebugUnitTest \
+    :indigo-secure-store:testDebugUnitTest :indigo-card-view:testDebugUnitTest \
+    :indigo-connectivity:testDebugUnitTest :app:testDebugUnitTest
+  # JUnit de los 5 módulos Kotlin -- por proyecto, no `./gradlew test` a secas: eso
+  # también corre el testDebugUnitTest de cada dependencia en node_modules, y
+  # expo-modules-core:testDebugUnitTest falla en esta combinación de Gradle/JDK con
+  # "did not discover any tests to execute" (su propia configuración de test, no algo
+  # que este proyecto pueda arreglar).
 - uses: actions/upload-artifact@v4             # sube el APK debug como artifact del run
 ```
 

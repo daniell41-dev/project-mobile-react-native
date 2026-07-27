@@ -52,10 +52,22 @@ jobs:
         run: ./gradlew assembleDebug
 
       # JUnit de las funciones puras de cada módulo (isTabletScreenLayout,
-      # connectivityStateFrom, parseAccentColor, ...) -- ver docs/07 sección 4.
-      - name: Run JUnit tests
+      # connectivityStateFrom, parseAccentColor, ...) -- ver docs/07 sección 4. Solo los
+      # módulos propios de Índigo, no `./gradlew test` a secas: eso corre también el
+      # testDebugUnitTest de cada dependencia en node_modules (expo-modules-core,
+      # react-native-svg, ...), y `expo-modules-core:testDebugUnitTest` falla en esta
+      # combinación de Gradle/JDK con "did not discover any tests to execute" -- un
+      # problema de su propia configuración de test, no de código nuestro que se pueda
+      # arreglar aquí. Confirmado real en CI.
+      - name: Run JUnit tests (solo módulos de Índigo)
         working-directory: android
-        run: ./gradlew test
+        run: |
+          ./gradlew \
+            :indigo-biometrics:testDebugUnitTest \
+            :indigo-secure-store:testDebugUnitTest \
+            :indigo-card-view:testDebugUnitTest \
+            :indigo-connectivity:testDebugUnitTest \
+            :app:testDebugUnitTest
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
