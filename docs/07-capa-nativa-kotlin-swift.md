@@ -506,7 +506,12 @@ a mano, con las piezas de `@expo/config-plugins`:
 - `withDangerousMod('android', ...)` — copia `IndigoDeviceModule.kt`/`IndigoDevicePackage.kt` a
   `android/app/src/main/java/dev/daniell/indigo/modules/device/` (el módulo vive en el propio
   módulo `:app` de Gradle porque el `codegenConfig` está en el `package.json` de la app, no en
-  uno propio — Codegen generó `NativeIndigoDeviceSpec` como parte de la compilación de `:app`).
+  uno propio). **Corrección real de la FASE 11:** el `NativeIndigoDeviceSpec` que Codegen debía
+  generar como parte de la compilación de `:app` nunca aparecía en CI (`./gradlew
+  compileDebugKotlin` fallaba con "Unresolved reference `NativeIndigoDeviceSpec`") — el mismo
+  plugin ahora lo genera a mano, con el script de Codegen ya validado en la FASE 9, y copia el
+  `.java` resultante directo al árbol de `:app`. Detalle completo (por qué Gradle no lo generaba
+  solo) en la sección 4.6.
 - `withMainApplication(...)` + `mergeContents(...)` — inyecta el `import` y
   `add(IndigoDevicePackage())` dentro de `PackageList(this).packages.apply { }` en
   `MainApplication.kt`, con marcadores `@generated begin/end` (idempotente: correr prebuild de
@@ -532,9 +537,15 @@ a mano, con las piezas de `@expo/config-plugins`:
   interna (`FILETYPE_BY_EXTENSION` en `node_modules/xcode/lib/pbxFile.js` solo tiene `.m`, no
   `.mm`) — el comentario generado en el `.pbxproj` dice *"IndigoDevice.mm in Resources"*, que es
   cosmético y engañoso (el propio archivo confirma que la entrada vive en la sección
-  `PBXSourcesBuildPhase`, no en `PBXResourcesBuildPhase`: sí se compila). Lo que **no** se pudo
-  verificar en este entorno es que Xcode realmente abra y compile el proyecto así — eso queda
-  para CI (FASE 11) o un Mac real.
+  `PBXSourcesBuildPhase`, no en `PBXResourcesBuildPhase`: sí se compila). **Corrección real de la
+  FASE 11:** el `path` que se le pasaba a `addSourceFile`/`addHeaderFile` (`"IndigoDevice/
+  IndigoDevice.mm"`) sí compilaba en teoría, pero `xcodebuild` no encontraba el archivo en CI
+  (`Build input file cannot be found`) — el grupo `ndigo` no tiene su propio `path` en el
+  `.pbxproj` (solo `name`), así que los archivos hijos se resuelven relativos al proyecto
+  (`ios/`), no a `ios/ndigo/`; confirmado comparando contra el `path` de los archivos hermanos
+  (`AppDelegate.swift` lleva `"ndigo/AppDelegate.swift"`). Corregido anteponiendo `"ndigo/"` al
+  path. Detalle completo en la sección 4.6 — la primera vez que este `.pbxproj` se compiló de
+  verdad, confirmando el riesgo que esta sección ya advertía.
 
 **Sin fallback web automático.** Los módulos de Expo Modules API tienen `registerWebModule` +
 un archivo `.web.ts` que Metro resuelve solo. Un TurboModule "bare" no tiene ese mecanismo — pero
@@ -786,12 +797,92 @@ otra en un pod de test), o inyectar un target de test nuevo a mano en el `.pbxpr
 paquete `xcode` (mucho más riesgo, cero forma de verificarlo sin Mac). Se dejó fuera del
 alcance de esta fase, documentado aquí como brecha conocida en vez de ocultarlo.
 
-**`android.yml`** es más directo: `ubuntu-latest` sí trae Android SDK real (a diferencia de
-este contenedor de desarrollo, ver sección 2), así que `./gradlew assembleDebug`/`test` corren
-sin ningún rodeo — es la primera vez que se confirma que los 5 módulos Kotlin (incluyendo el
-`NativeIndigoDeviceSpec` generado por Codegen en la FASE 9) compilan juntos de verdad. El job
-`release` (manual, `workflow_dispatch`) firma con un keystore real desde secrets — ver sección
-8 para el detalle del `signingConfig` inyectado por `plugins/withIndigoAndroidRelease.ts`.
+**El path mal resuelto de `indigo-device` en el `.pbxproj`.** Corregido el `pod install`,
+`xcodebuild build` siguió fallando: `Build input file cannot be found:
+'.../ios/IndigoDevice/IndigoDevice.mm'`. El path que `withIndigoDeviceXcodeProject`
+(FASE 9) le pasaba a `addSourceFile`/`addHeaderFile` era `"IndigoDevice/IndigoDevice.mm"` —
+razonable si el grupo `ndigo` del `.pbxproj` tuviera su propio `path` apuntando a `ios/ndigo/`,
+pero **no lo tiene** (solo `name = ndigo`, confirmado inspeccionando el `.pbxproj` real): es un
+grupo "virtual" cuyos archivos hijos se resuelven relativos al **proyecto** (`ios/`), no al
+grupo. La prueba está en los archivos hermanos del mismo grupo — `AppDelegate.swift` lleva
+`path = "ndigo/AppDelegate.swift"`, con el prefijo `"ndigo/"` incluido a mano por la propia
+plantilla de Expo. Corregido anteponiendo ese mismo prefijo:
+
+```ts
+const sourcePath = `${groupName}/${IOS_TARGET_SUBDIR}/IndigoDevice.mm`; // "ndigo/IndigoDevice/IndigoDevice.mm"
+```
+
+Es exactamente el riesgo que la FASE 9 ya había marcado sin poder confirmarlo ("⚠️ La parte de
+Xcode no se ha podido verificar en este entorno") — y la primera vez que ese `.pbxproj` se abrió
+de verdad en Xcode confirmó que, en efecto, tenía un bug.
+
+**`android.yml` — no fue tan directo como parecía.** `ubuntu-latest` sí trae Android SDK real (a
+diferencia de este contenedor de desarrollo, ver sección 2), así que en teoría
+`./gradlew assembleDebug`/`test` correrían sin rodeos. En la práctica, la primera corrida real
+encontró tres bugs distintos, uno por módulo:
+
+- **`indigo-secure-store`:** `androidx.security:security-crypto:1.0.0` (FASE 7) no tiene la
+  clase `MasterKey`/`MasterKey.Builder` que usa `IndigoSecureStoreModule.kt` — esa API llegó
+  recién en la línea `1.1.0-alpha` (Google nunca la estabilizó). `Unresolved reference
+  'MasterKey'` + un mismatch de tipos en `EncryptedSharedPreferences.create(...)` (la 1.0.0
+  espera `(fileName: String, masterKeyAlias: String, context: Context, ...)`, orden distinto al
+  de la API moderna). Corregido subiendo la dependencia a `1.1.0-alpha06`.
+- **`indigo-card-view`:** `private var holderName by mutableStateOf("")` (FASE 8) genera un
+  `setHolderName(String)` sintético — Kotlin SIEMPRE genera accesores para una propiedad
+  delegada con `by`, incluso si es `private` — que choca en JVM ("platform declaration clash")
+  con el `fun setHolderName(value: String)` público que `ExpoView` exige para el prop de Fabric:
+  mismo nombre, misma firma borrada, dos declaraciones. Corregido renombrando las cuatro
+  propiedades de estado de Compose con sufijo `State` (`holderNameState`, ...) para que no
+  colisionen con los setters públicos.
+- **`indigo-device`:** el hallazgo más profundo de los tres. `NativeIndigoDeviceSpec` (que
+  Codegen debía generar para `:app`) simplemente no existía — `Unresolved reference
+  'NativeIndigoDeviceSpec'`. La causa: Gradle alimenta Codegen para `:app` con el mismo comando
+  que arma `ios/Podfile` (`expo-modules-autolinking react-native-config --json`, invocado desde
+  `settings.gradle` vía `expoAutolinking.rnConfigCommand`) — y ese comando **no expone el
+  `codegenConfig` del propio `package.json` raíz de la app**, solo el de paquetes reales en
+  `node_modules` (confirmado corriendo el comando a mano: la clave `project` del JSON no trae
+  `codegenConfig`, a diferencia de `dependencies["@react-native-async-storage/async-storage"]`,
+  que sí). `:app:generateCodegenArtifactsFromSchema` corre en CI, pero sin ese dato no tiene
+  nada que generar para `IndigoDeviceSpec`.
+
+  La salida obvia — `EXPO_USE_COMMUNITY_AUTOLINKING=1`, el interruptor que `settings.gradle` ya
+  trae para usar `npx @react-native-community/cli config` en vez del comando de Expo — se probó
+  y se descartó: corrida a mano en este entorno, esa versión "pura" devuelve
+  `"dependencies": {}` en un proyecto Expo (Expo no genera el `react-native.config.js` del que
+  depende el CLI vainilla para descubrir dependencias) — habría dejado sin Codegen a
+  `react-native-svg`, `react-native-safe-area-context` y `async-storage`, un regreso mucho peor
+  que el problema original. Se descartó *localmente*, sin gastar una corrida de CI, en base a
+  esa sola comprobación.
+
+  La corrección real: generar el spec a mano, con el mismo script de Codegen que la FASE 9 ya
+  había validado (`node_modules/react-native/scripts/generate-codegen-artifacts.js`, sin
+  necesitar Android SDK), y copiar **solo** el `.java` de `IndigoDeviceSpec` al árbol de `:app`
+  — el resto de specs que ese mismo script también regenera (de librerías que ya autolinkean
+  bien) se descartan. `plugins/withIndigoDevice.ts` lo hace dentro del mismo
+  `withDangerousMod('android', ...)` que ya copiaba `IndigoDeviceModule.kt`:
+
+  ```ts
+  execFileSync(process.execPath, [
+    '.../generate-codegen-artifacts.js', '-p', projectRoot, '-t', 'android', '-o', outDir,
+  ]);
+  fs.copyFileSync(
+    path.join(outDir, '.../java/com/facebook/fbreact/specs/NativeIndigoDeviceSpec.java'),
+    path.join(platformProjectRoot, 'app/src/main/java/com/facebook/fbreact/specs/NativeIndigoDeviceSpec.java'),
+  );
+  ```
+
+  Verificado localmente corriendo `expo prebuild --clean` e inspeccionando que el `.java`
+  aparece en el lugar correcto con contenido real (no un archivo vacío) — la compilación real
+  la confirmó el propio check `android` de esta fase.
+
+El job `release` (manual, `workflow_dispatch`) firma con un keystore real desde secrets — ver
+sección 8 para el detalle del `signingConfig` inyectado por `plugins/withIndigoAndroidRelease.ts`.
+
+**La lección de conjunto de esta fase:** cinco módulos nativos, escritos y razonados a lo largo
+de seis fases sin poder compilarlos ni una sola vez, tenían **seis bugs reales** esperando —
+ninguno de diseño, todos de "esto no se verificó nunca de punta a punta". Ese es exactamente el
+argumento a favor de esta fase: la capa nativa de un proyecto sin CI que la compile de verdad no
+está terminada, por bien razonada que esté cada pieza por separado.
 
 ---
 
