@@ -6,14 +6,13 @@ import { fontFamily, fontSize } from '@/theme/typography';
 type ButtonProps = {
   label: string;
   onPress: () => void;
-  variant?: 'solid' | 'outline';
+  variant?: 'solid' | 'outline' | 'danger';
 };
 
-// Botón mínimo para las pantallas-shell de la FASE 1. El set completo de variantes
-// (social, danger, tamaños) llega con el pase de fidelidad visual de la FASE 3.
 export function Button({ label, onPress, variant = 'solid' }: ButtonProps) {
   const theme = useTheme();
-  const isOutline = variant === 'outline';
+  const tint = variant === 'danger' ? theme.colors.down : theme.colors.accent;
+  const isSolid = variant === 'solid';
 
   return (
     <Pressable
@@ -23,20 +22,13 @@ export function Button({ label, onPress, variant = 'solid' }: ButtonProps) {
         styles.base,
         {
           borderRadius: theme.radii.md,
-          backgroundColor: isOutline ? 'transparent' : theme.colors.accent,
-          borderWidth: isOutline ? 1 : 0,
-          borderColor: theme.colors.accent,
+          backgroundColor: isSolid ? tint : 'transparent',
+          borderWidth: isSolid ? 0 : 1,
+          borderColor: tint,
         },
       ]}
     >
-      <Text
-        style={[
-          styles.label,
-          { color: isOutline ? theme.colors.accent : theme.colors.bg },
-        ]}
-      >
-        {label}
-      </Text>
+      <Text style={[styles.label, { color: isSolid ? theme.colors.bg : tint }]}>{label}</Text>
     </Pressable>
   );
 }

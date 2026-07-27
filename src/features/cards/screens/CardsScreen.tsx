@@ -1,18 +1,27 @@
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { StyleSheet, Switch, Text, View } from 'react-native';
 import { useState } from 'react';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
+import { Alert, StyleSheet, Switch, View } from 'react-native';
 
 import { CardsStackParamList } from '@/bootstrap/navigation/types';
 import { DataService } from '@/core/services/data.service';
+import { AppText } from '@/shared/components/AppText';
+import { CardVisual } from '@/shared/components/CardVisual';
+import { ListRow } from '@/shared/components/ListRow';
 import { Screen } from '@/shared/components/Screen';
+import { SectionHeader } from '@/shared/components/SectionHeader';
 import { useTheme } from '@/shared/hooks/useTheme';
 import { formatCurrency } from '@/shared/utils/formatCurrency';
-import { fontFamily, fontSize } from '@/theme/typography';
 
 type Props = NativeStackScreenProps<CardsStackParamList, 'Cards'>;
 
-// Shell de la FASE 1. El CardVisual nativo (Compose/SwiftUI, modules/indigo-card-view)
-// llega en la FASE 8 — aquí es un placeholder plano con los mismos datos.
+const MORE_OPTIONS = [
+  { icon: 'keypad-outline' as const, title: 'PIN y CVV' },
+  { icon: 'copy-outline' as const, title: 'Copiar datos de la tarjeta' },
+  { icon: 'trending-up-outline' as const, title: 'Límites' },
+  { icon: 'card-outline' as const, title: 'Solicitar tarjeta física' },
+];
+
 export function CardsScreen(_props: Props) {
   const theme = useTheme();
   const card = DataService.getCards()[0];
@@ -21,38 +30,60 @@ export function CardsScreen(_props: Props) {
 
   return (
     <Screen>
-      <Text style={[styles.title, { color: theme.colors.text }]}>Tarjetas</Text>
+      <AppText variant="screenTitle" style={styles.title}>
+        Tarjetas
+      </AppText>
 
-      <View
-        style={[
-          styles.cardVisual,
-          { backgroundColor: theme.colors.accent, borderRadius: theme.radii.lg },
-        ]}
-      >
-        <Text style={styles.cardHolder}>{card.holder}</Text>
-        <Text style={styles.cardNumber}>·· {card.last4}</Text>
-      </View>
+      <CardVisual card={card} />
 
       <View style={styles.tileRow}>
-        <View style={[styles.tile, { backgroundColor: theme.colors.surface }]}>
-          <Text style={{ color: theme.colors.textDim }}>Saldo débito</Text>
-          <Text style={{ color: theme.colors.text }}>{formatCurrency(card.debitBalance)}</Text>
+        <View
+          style={[
+            styles.tile,
+            { backgroundColor: theme.colors.surface, borderRadius: theme.radii.md },
+          ]}
+        >
+          <AppText variant="subtitle" tone="textDim">
+            Saldo débito
+          </AppText>
+          <AppText variant="itemTitle">{formatCurrency(card.debitBalance)}</AppText>
         </View>
-        <View style={[styles.tile, { backgroundColor: theme.colors.surface }]}>
-          <Text style={{ color: theme.colors.textDim }}>Crédito disponible</Text>
-          <Text style={{ color: theme.colors.text }}>
-            {formatCurrency(card.creditAvailable)}
-          </Text>
+        <View
+          style={[
+            styles.tile,
+            { backgroundColor: theme.colors.surface, borderRadius: theme.radii.md },
+          ]}
+        >
+          <AppText variant="subtitle" tone="textDim">
+            Crédito disponible
+          </AppText>
+          <AppText variant="itemTitle">{formatCurrency(card.creditAvailable)}</AppText>
         </View>
       </View>
 
-      <View style={[styles.toggleRow, { borderBottomColor: theme.colors.hairline }]}>
-        <Text style={{ color: theme.colors.text }}>Congelar tarjeta</Text>
-        <Switch value={frozen} onValueChange={setFrozen} />
-      </View>
-      <View style={[styles.toggleRow, { borderBottomColor: theme.colors.hairline }]}>
-        <Text style={{ color: theme.colors.text }}>Compras en línea</Text>
-        <Switch value={onlinePurchases} onValueChange={setOnlinePurchases} />
+      <SectionHeader title="Controles" />
+      <ListRow
+        title="Congelar tarjeta"
+        subtitle={frozen ? 'Los pagos y retiros están bloqueados' : 'La tarjeta está activa'}
+        trailing={<Switch value={frozen} onValueChange={setFrozen} />}
+      />
+      <ListRow
+        title="Compras en línea"
+        subtitle={onlinePurchases ? 'Permitidas' : 'Bloqueadas'}
+        trailing={<Switch value={onlinePurchases} onValueChange={setOnlinePurchases} />}
+      />
+
+      <View style={styles.moreOptions}>
+        <SectionHeader title="Más opciones" />
+        {MORE_OPTIONS.map((option) => (
+          <ListRow
+            key={option.title}
+            title={option.title}
+            leading={<Ionicons name={option.icon} size={20} color={theme.colors.textDim} />}
+            detail
+            onPress={() => Alert.alert(option.title, 'Próximamente en Índigo.')}
+          />
+        ))}
       </View>
     </Screen>
   );
@@ -60,39 +91,20 @@ export function CardsScreen(_props: Props) {
 
 const styles = StyleSheet.create({
   title: {
-    fontFamily: fontFamily.uiBold,
-    fontSize: fontSize.screenTitle,
     marginVertical: 16,
-  },
-  cardVisual: {
-    padding: 20,
-    marginBottom: 16,
-    gap: 24,
-  },
-  cardHolder: {
-    color: '#FFFFFF',
-    fontFamily: fontFamily.uiSemiBold,
-  },
-  cardNumber: {
-    color: 'rgba(255,255,255,0.85)',
-    fontFamily: fontFamily.numRegular,
   },
   tileRow: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 16,
+    marginTop: 16,
+    marginBottom: 8,
   },
   tile: {
     flex: 1,
     padding: 14,
-    borderRadius: 12,
     gap: 4,
   },
-  toggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+  moreOptions: {
+    marginTop: 16,
   },
 });

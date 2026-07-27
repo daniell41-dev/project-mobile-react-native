@@ -32,7 +32,7 @@ describe('App', () => {
       fireEvent.press(profileTab);
     });
 
-    const themeToggle = getByRole('switch');
+    const themeToggle = getByRole('switch', { name: 'Modo oscuro' });
     await act(async () => {
       fireEvent(themeToggle, 'valueChange', true);
     });

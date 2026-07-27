@@ -1,13 +1,15 @@
 import { CommonActions } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { StyleSheet, Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { StyleSheet, View } from 'react-native';
 
 import { HomeStackParamList } from '@/bootstrap/navigation/types';
+import { AppText } from '@/shared/components/AppText';
 import { Button } from '@/shared/components/Button';
+import { Chip } from '@/shared/components/Chip';
 import { Screen } from '@/shared/components/Screen';
 import { useTheme } from '@/shared/hooks/useTheme';
 import { formatCurrency } from '@/shared/utils/formatCurrency';
-import { fontFamily, fontSize } from '@/theme/typography';
 
 type Props = NativeStackScreenProps<HomeStackParamList, 'SendDone'>;
 
@@ -17,28 +19,56 @@ export function SendDoneScreen({ route, navigation }: Props) {
 
   return (
     <Screen style={styles.container}>
-      <Text style={[styles.title, { color: theme.colors.up }]}>¡Enviado!</Text>
-      <Text style={{ color: theme.colors.text }}>
+      <View
+        style={[
+          styles.iconCircle,
+          { backgroundColor: `${theme.colors.up}22`, borderRadius: theme.radii.xl },
+        ]}
+      >
+        <Ionicons name="checkmark-circle" size={48} color={theme.colors.up} />
+      </View>
+
+      <AppText variant="screenTitle" style={styles.title}>
+        ¡Enviado!
+      </AppText>
+      <AppText variant="body" tone="textDim" style={styles.message}>
         Enviaste {formatCurrency(amount)} a {recipientName}
-      </Text>
-      <Button
-        label="Volver al inicio"
-        onPress={() =>
-          navigation.dispatch(CommonActions.navigate({ name: 'Home' }))
-        }
-      />
+      </AppText>
+
+      <Chip label="SPEI · llega en segundos" color="success" />
+
+      <View style={styles.action}>
+        <Button
+          label="Volver al inicio"
+          onPress={() => navigation.dispatch(CommonActions.navigate({ name: 'Home' }))}
+        />
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 16,
+    gap: 8,
+  },
+  iconCircle: {
+    width: 88,
+    height: 88,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
   },
   title: {
-    fontFamily: fontFamily.uiExtraBold,
-    fontSize: fontSize.screenTitle,
     textAlign: 'center',
+  },
+  message: {
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  action: {
+    marginTop: 32,
+    alignSelf: 'stretch',
   },
 });
