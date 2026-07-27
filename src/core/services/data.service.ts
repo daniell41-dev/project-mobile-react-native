@@ -3,13 +3,13 @@ import { Contact } from '@/core/models/contact.model';
 import { MonthlySpending, SpendingCategory } from '@/core/models/category.model';
 import { AppNotification } from '@/core/models/notification.model';
 import { SavingsGoal } from '@/core/models/savings-goal.model';
-import { Transaction } from '@/core/models/transaction.model';
 import { User } from '@/core/models/user.model';
 
 // Datos de ejemplo (es-MX / MXN), portados de docs/design/prototipo/data.js.
 // Facade: el resto de la app consume estos datos a través de este servicio, nunca
-// del array crudo. En la FASE 4 se sustituye por TransactionRepository (Strategy:
-// InMemory/Http) sin cambiar la superficie que consumen las pantallas.
+// del array crudo. Las transacciones viven en core/repositories/ (TransactionRepository,
+// Strategy InMemory/Http, ver FASE 4) porque tienen su propio flujo de datos vía
+// TanStack Query; el resto de entidades mock no necesita esa capa todavía (YAGNI).
 
 const user: User = {
   id: 'u1',
@@ -20,119 +20,6 @@ const user: User = {
   clabe: 'CLABE ·· 4821',
   verified: true,
 };
-
-const transactions: Transaction[] = [
-  {
-    id: 't1',
-    merchant: 'Nómina · ACME S.A.',
-    category: 'Ingresos',
-    icon: 'salary',
-    amount: 18400,
-    day: 'Hoy',
-    time: '08:02',
-    method: 'Depósito SPEI',
-    reference: 'SPEI 7741920',
-  },
-  {
-    id: 't2',
-    merchant: 'Spotify Premium',
-    category: 'Suscripciones',
-    icon: 'music',
-    amount: -199,
-    day: 'Hoy',
-    time: '07:14',
-    method: 'Índigo Débito ·· 4821',
-    reference: 'SUB-2291',
-  },
-  {
-    id: 't3',
-    merchant: 'OXXO',
-    category: 'Tiendas',
-    icon: 'store',
-    amount: -87.5,
-    day: 'Hoy',
-    time: '21:36',
-    method: 'Índigo Débito ·· 4821',
-    reference: 'POS-58210',
-  },
-  {
-    id: 't4',
-    merchant: 'Uber',
-    category: 'Transporte',
-    icon: 'car',
-    amount: -142,
-    day: 'Ayer',
-    time: '19:48',
-    method: 'Índigo Crédito ·· 0573',
-    reference: 'TRP-44910',
-  },
-  {
-    id: 't5',
-    merchant: 'Mariana López',
-    category: 'Transferencia',
-    icon: 'person',
-    amount: -1200,
-    day: 'Ayer',
-    time: '15:20',
-    method: 'SPEI a BBVA',
-    reference: 'SPEI 7740112',
-  },
-  {
-    id: 't6',
-    merchant: 'Starbucks',
-    category: 'Comida',
-    icon: 'coffee',
-    amount: -98,
-    day: 'Ayer',
-    time: '09:11',
-    method: 'Índigo Débito ·· 4821',
-    reference: 'POS-11820',
-  },
-  {
-    id: 't7',
-    merchant: 'Amazon México',
-    category: 'Compras',
-    icon: 'bag',
-    amount: -649,
-    day: '4 jun',
-    time: '12:03',
-    method: 'Índigo Crédito ·· 0573',
-    reference: 'ORD-99213',
-  },
-  {
-    id: 't8',
-    merchant: 'Devolución · Liverpool',
-    category: 'Reembolso',
-    icon: 'refund',
-    amount: 1299,
-    day: '3 jun',
-    time: '16:40',
-    method: 'Índigo Crédito ·· 0573',
-    reference: 'REF-30021',
-  },
-  {
-    id: 't9',
-    merchant: 'CFE',
-    category: 'Servicios',
-    icon: 'bolt',
-    amount: -540,
-    day: '3 jun',
-    time: '10:25',
-    method: 'Domiciliación',
-    reference: 'SRV-CFE-882',
-  },
-  {
-    id: 't10',
-    merchant: 'Cinépolis',
-    category: 'Entretenimiento',
-    icon: 'ticket',
-    amount: -260,
-    day: '2 jun',
-    time: '20:15',
-    method: 'Índigo Débito ·· 4821',
-    reference: 'POS-77410',
-  },
-];
 
 const contacts: Contact[] = [
   { id: 'c1', name: 'Mariana López', sub: 'BBVA ·· 2291', initials: 'ML', recent: true },
@@ -218,8 +105,6 @@ const savingsGoal: SavingsGoal = {
 
 export const DataService = {
   getUser: (): User => user,
-  getTransactions: (): Transaction[] => transactions,
-  getRecentTransactions: (limit = 4): Transaction[] => transactions.slice(0, limit),
   getContacts: (): Contact[] => contacts,
   getSpendingCategories: (): SpendingCategory[] => spendingCategories,
   getMonthlySpending: (): MonthlySpending[] => monthlySpending,

@@ -14,6 +14,7 @@ import {
 import { Sora_400Regular, Sora_600SemiBold, Sora_700Bold } from '@expo-google-fonts/sora';
 
 import { ThemeProvider } from '@/bootstrap/providers/ThemeProvider';
+import { QueryProvider } from '@/bootstrap/providers/QueryProvider';
 import { RootNavigator } from '@/bootstrap/navigation/RootNavigator';
 import { toNavigationTheme } from '@/bootstrap/navigation/navigationTheme';
 import { useAuthStore } from '@/core/stores/auth.store';
@@ -56,9 +57,11 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <ThemeProvider>
-        <NavigationContainerWithTheme />
-      </ThemeProvider>
+      <QueryProvider>
+        <ThemeProvider>
+          <NavigationContainerWithTheme />
+        </ThemeProvider>
+      </QueryProvider>
     </SafeAreaProvider>
   );
 }

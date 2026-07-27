@@ -1,9 +1,10 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { HomeStackParamList } from '@/bootstrap/navigation/types';
 import { DataService } from '@/core/services/data.service';
+import { useTransactionsQuery } from '@/core/queries/transactions.queries';
 import { AppText } from '@/shared/components/AppText';
 import { BalanceCard } from '@/shared/components/BalanceCard';
 import { QuickAction } from '@/shared/components/QuickAction';
@@ -22,8 +23,9 @@ function comingSoon(feature: string) {
 export function HomeScreen({ navigation }: Props) {
   const theme = useTheme();
   const user = DataService.getUser();
-  const recent = DataService.getRecentTransactions();
   const savingsGoal = DataService.getSavingsGoal();
+  const { data: transactions, isLoading } = useTransactionsQuery();
+  const recent = transactions?.slice(0, 4) ?? [];
   const progress = Math.min(savingsGoal.current / savingsGoal.target, 1);
 
   return (
@@ -109,22 +111,29 @@ export function HomeScreen({ navigation }: Props) {
         />
       </View>
 
-      <FlatList
-        data={recent}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingHorizontal: theme.spacing.screenPadding }}
-        renderItem={({ item }) => (
-          <TransactionRow
-            transaction={item}
-            onPress={() => navigation.navigate('TxDetail', { transactionId: item.id })}
-          />
-        )}
-      />
+      {isLoading ? (
+        <ActivityIndicator color={theme.colors.accent} style={styles.loading} />
+      ) : (
+        <FlatList
+          data={recent}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingHorizontal: theme.spacing.screenPadding }}
+          renderItem={({ item }) => (
+            <TransactionRow
+              transaction={item}
+              onPress={() => navigation.navigate('TxDetail', { transactionId: item.id })}
+            />
+          )}
+        />
+      )}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  loading: {
+    marginTop: 24,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

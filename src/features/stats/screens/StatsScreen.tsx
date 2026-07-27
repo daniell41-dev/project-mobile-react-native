@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
+import { BarChart, PieChart } from 'react-native-gifted-charts';
 import { StyleSheet, View } from 'react-native';
 
 import { StatsStackParamList } from '@/bootstrap/navigation/types';
@@ -16,15 +17,27 @@ type Props = NativeStackScreenProps<StatsStackParamList, 'Stats'>;
 
 const PERIODS = ['Semana', 'Mes', 'Año'] as const;
 
-// El donut y las barras reales (react-native-gifted-charts) llegan en la FASE 4; aquí
-// se muestra la misma data como leyenda/lista para validar que fluye correctamente.
+// Charts reales (react-native-gifted-charts sobre react-native-svg). El segmento
+// Semana/Mes/Año es por ahora cosmético: la data mock de DataService no varía por
+// periodo — cuando exista un backend real, cada periodo pedirá su propio conjunto.
 export function StatsScreen(_props: Props) {
   const theme = useTheme();
   const [period, setPeriod] = useState<(typeof PERIODS)[number]>('Mes');
   const categories = DataService.getSpendingCategories();
   const months = DataService.getMonthlySpending();
   const total = categories.reduce((sum, category) => sum + category.amount, 0);
-  const maxMonthValue = Math.max(...months.map((month) => month.value));
+
+  const pieData = categories.map((category) => ({
+    value: category.pct,
+    color: category.color,
+    text: '',
+  }));
+
+  const barData = months.map((month) => ({
+    value: month.value,
+    label: month.month,
+    frontColor: month.current ? theme.colors.accent : theme.colors.surface3,
+  }));
 
   return (
     <Screen>
@@ -34,53 +47,58 @@ export function StatsScreen(_props: Props) {
 
       <Segment options={PERIODS} value={period} onChange={setPeriod} />
 
-      <View style={styles.totalBlock}>
-        <AppText variant="subtitle" tone="textDim">
-          Gasto total · {period}
-        </AppText>
-        <AppText variant="balance">{formatCurrency(total)}</AppText>
-      </View>
+      <AppText variant="subtitle" tone="textDim" style={styles.totalLabel}>
+        Gasto total · {period}
+      </AppText>
 
-      <SectionHeader title="Por categoría" />
-      {categories.map((category) => (
-        <View key={category.name} style={styles.categoryRow}>
-          <View style={[styles.dot, { backgroundColor: category.color }]} />
-          <AppText variant="body" style={styles.categoryName}>
-            {category.name}
-          </AppText>
-          <AppText variant="subtitle" tone="textDim">
-            {category.pct}%
-          </AppText>
-          <AppText variant="itemTitle" style={styles.categoryAmount}>
-            {formatCurrency(category.amount)}
-          </AppText>
-        </View>
-      ))}
-
-      <View style={styles.monthsSection}>
-        <SectionHeader title="Tendencia mensual" />
-        <View style={styles.monthsRow}>
-          {months.map((month) => (
-            <View key={month.month} style={styles.monthColumn}>
-              <View style={[styles.barTrack, { backgroundColor: theme.colors.surface3 }]}>
-                <View
-                  style={[
-                    styles.barFill,
-                    {
-                      height: `${(month.value / maxMonthValue) * 100}%`,
-                      backgroundColor: month.current ? theme.colors.accent : theme.colors.surface3,
-                      borderWidth: month.current ? 0 : 1,
-                      borderColor: theme.colors.accent,
-                    },
-                  ]}
-                />
-              </View>
+      <View style={styles.donutRow}>
+        <PieChart
+          data={pieData}
+          donut
+          radius={78}
+          innerRadius={52}
+          innerCircleColor={theme.colors.bg}
+          centerLabelComponent={() => (
+            <View style={styles.donutCenter}>
+              <AppText variant="itemTitle">{formatCurrency(total)}</AppText>
               <AppText variant="label" tone="textMute">
-                {month.month}
+                Total
+              </AppText>
+            </View>
+          )}
+        />
+
+        <View style={styles.legend}>
+          {categories.map((category) => (
+            <View key={category.name} style={styles.legendRow}>
+              <View style={[styles.dot, { backgroundColor: category.color }]} />
+              <AppText variant="label" tone="textDim" style={styles.legendName} numberOfLines={1}>
+                {category.name}
+              </AppText>
+              <AppText variant="label" tone="textDim">
+                {category.pct}%
               </AppText>
             </View>
           ))}
         </View>
+      </View>
+
+      <View style={styles.monthsSection}>
+        <SectionHeader title="Tendencia mensual" />
+        <BarChart
+          data={barData}
+          barWidth={18}
+          spacing={20}
+          roundedTop
+          hideRules
+          xAxisThickness={0}
+          yAxisThickness={0}
+          hideYAxisText
+          noOfSections={4}
+          maxValue={1}
+          height={110}
+          xAxisLabelTextStyle={{ color: theme.colors.textMute, fontSize: 11 }}
+        />
       </View>
 
       <View
@@ -103,55 +121,37 @@ const styles = StyleSheet.create({
   title: {
     marginVertical: 16,
   },
-  totalBlock: {
+  totalLabel: {
     marginTop: 20,
-    marginBottom: 8,
-    gap: 4,
   },
-  categoryRow: {
+  donutRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
+    gap: 16,
+    marginTop: 12,
   },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+  donutCenter: {
+    alignItems: 'center',
   },
-  categoryName: {
+  legend: {
     flex: 1,
+    gap: 8,
   },
-  categoryAmount: {
-    marginLeft: 12,
-    minWidth: 76,
-    textAlign: 'right',
-  },
-  monthsSection: {
-    marginTop: 16,
-  },
-  monthsRow: {
+  legendRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    height: 120,
-    marginTop: 8,
-  },
-  monthColumn: {
     alignItems: 'center',
     gap: 6,
+  },
+  legendName: {
     flex: 1,
   },
-  barTrack: {
-    width: 18,
-    height: 88,
-    borderRadius: 9,
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
-  barFill: {
-    width: '100%',
-    borderRadius: 9,
+  monthsSection: {
+    marginTop: 24,
   },
   tipCard: {
     flexDirection: 'row',
