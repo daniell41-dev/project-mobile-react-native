@@ -6,8 +6,9 @@
 
 ## Estado actual
 
-**Bloque A (fundación JS/UI) completo: FASES 0–4.** El Bloque B (capa nativa Kotlin/Swift,
-FASES 5–11) es el eje del proyecto y ya tiene cinco módulos nativos reales (FASES 6–10) — ver
+**Bloque A (fundación JS/UI) completo: FASES 0–4.** El Bloque B (capa nativa Kotlin/Swift) tiene
+cinco módulos nativos reales (FASES 6–10) y ya levantó la CI que finalmente los compila y
+testea de punta a punta (FASE 11, en verificación — ver `docs/07` sección 4.6) — ver
 `docs/04-roadmap-y-fases.md`.
 
 | Fase | Contenido | Estado |
@@ -23,6 +24,7 @@ FASES 5–11) es el eje del proyecto y ya tiene cinco módulos nativos reales (F
 | FASE 8 | Módulo nativo `indigo-card-view`: vista Fabric, Jetpack Compose + SwiftUI | ✅ |
 | FASE 9 | TurboModule "bare" `indigo-device`: sin Expo Modules API, Codegen verificado local | ✅ |
 | FASE 10 | Módulo nativo `indigo-connectivity`: `callbackFlow`/`AsyncStream` como evento suscribible | ✅ |
+| FASE 11 | CI/CD nativo: `android.yml`/`ios.yml` compilan y testean Kotlin/Swift de verdad + demo web | 🟡 |
 
 ---
 
@@ -184,6 +186,30 @@ incluyendo un desajuste de tipos real en `registerWebModule` de `expo-modules-co
 devuelve la clase, pero en runtime devuelve una instancia) y cómo se corrigió con un cast
 documentado, en `docs/07-capa-nativa-kotlin-swift.md` sección 4.5.
 
+## CI/CD nativo: el cierre del Bloque B (FASE 11)
+
+Hasta la FASE 10, todo el Kotlin/Swift del proyecto se escribió y se verificó **sin poder
+compilarlo de punta a punta** en este entorno. FASE 11 no añade una fase nativa nueva: levanta
+`.github/workflows/android.yml` (Gradle real sobre `ubuntu-latest`, con Android SDK — corre
+`assembleDebug` + `./gradlew test` de los 5 módulos Kotlin en cada PR, y un job manual firmado
+con keystore real desde secrets) e `.github/workflows/ios.yml` (`macos-latest` — `pod install` +
+`xcodebuild build` compila el Swift/Objective-C++ de verdad, y `xcodebuild test` corre el XCTest
+de cada módulo vía los esquemas `<Módulo>-Unit-Tests` que CocoaPods genera automáticamente para
+los `.podspec` con `test_spec`). Es la primera vez que ese código realmente compila.
+
+Preparar esta fase encontró un bug real: los 4 `.podspec` con Swift (`indigo-biometrics`,
+`indigo-secure-store`, `indigo-card-view`, `indigo-connectivity`) tenían un `source_files`
+recursivo que arrastraba también sus propios archivos `Tests/*.swift` al target **principal**
+del pod en vez de a un target de test separado — nunca se manifestó porque nada había corrido
+`pod install`/`xcodebuild` de verdad hasta ahora. Se corrigió con un bloque `test_spec` en cada
+podspec (mismo patrón que usa el propio `ExpoModulesCore.podspec`) y un config plugin
+(`plugins/withIndigoIosTests.ts`) que activa `includeTests: true` en el Podfile generado.
+`modules/indigo-device` (el TurboModule "bare" de la FASE 9) queda fuera del XCTest automático a
+propósito — no es un Pod, así que no tiene `test_spec`; detalle en `docs/07` sección 4.6.
+`eas.json` (perfiles `development`/`preview`/`production`) y `.github/workflows/pages.yml`
+(demo web a GitHub Pages en cada push a `main`) completan la fase. Detalle técnico completo en
+`docs/07-capa-nativa-kotlin-swift.md` sección 4.6 y `docs/02-guia-deploy-y-ci.md` PARTE 2.
+
 ## Qué se puede verificar en este entorno (sin Mac, sin emulador Android)
 
 - Lint, typecheck y tests JS: `pnpm lint && pnpm typecheck && pnpm test:ci`.
@@ -197,9 +223,11 @@ documentado, en `docs/07-capa-nativa-kotlin-swift.md` sección 4.5.
 - Gradle/Kotlin: **parcial en este contenedor concreto** — no hay Android SDK ni acceso a
   `dl.google.com` (bloqueado por el proxy de salida), así que `./gradlew assembleDebug`/`test`
   no compilan aquí, aunque `gradlew --version` sí arranca. Detalle y la razón exacta en
-  `docs/07` sección 2 y `docs/02` PARTE 4.1. Se verifica de verdad en `android.yml` (FASE 11).
-- Swift: **no localmente** — se compila y testea en el workflow `ios.yml` sobre `macos-latest`
-  (ver `docs/02-guia-deploy-y-ci.md`).
+  `docs/07` sección 2 y `docs/02` PARTE 4.1. Se verifica de verdad en `android.yml` (FASE 11,
+  `ubuntu-latest` sí trae Android SDK).
+- Swift/CocoaPods: **no localmente** — no hay gem de CocoaPods ni Xcode en este contenedor. Se
+  compila y testea de verdad en el workflow `ios.yml` sobre `macos-latest` (ver
+  `docs/02-guia-deploy-y-ci.md`).
 
 ---
 

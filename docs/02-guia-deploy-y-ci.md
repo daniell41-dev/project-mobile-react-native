@@ -63,49 +63,74 @@ Secrets — nunca en el repo.
 4. `pnpm test:ci` (Jest headless, no requiere navegador ni emulador).
 5. `pnpm build:web` (export web — caza errores de bundling que el typecheck no ve).
 
-### `android.yml` — Gradle real, `ubuntu-latest`
+### `android.yml` (FASE 11) — Gradle real, `ubuntu-latest`
+
+Dos jobs. `build-and-test` corre en cada PR/push a `develop`/`main`:
 
 ```yaml
+- uses: actions/setup-java@v4        # Temurin 17
+- uses: android-actions/setup-android@v3
 - run: npx expo prebuild -p android --clean
-- run: cd android && ./gradlew assembleDebug
-- run: cd android && ./gradlew test          # JUnit de los módulos Kotlin
-# opcional (workflow_dispatch): assembleRelease firmado con keystore desde secrets → artifact APK/AAB
+- uses: gradle/actions/setup-gradle@v4
+- run: cd android && ./gradlew assembleDebug   # APK debug, keystore de la plantilla
+- run: cd android && ./gradlew test            # JUnit de los 5 módulos Kotlin
+- uses: actions/upload-artifact@v4             # sube el APK debug como artifact del run
 ```
 
-### `ios.yml` — Swift real, `macos-latest` ⭐
+`release` (`workflow_dispatch` manual) firma de verdad: decodifica
+`secrets.INDIGO_ANDROID_KEYSTORE_BASE64` a `android/app/release.keystore`, escribe
+`INDIGO_RELEASE_STORE_FILE`/`_STORE_PASSWORD`/`_KEY_ALIAS`/`_KEY_PASSWORD` en
+`android/gradle.properties` (los lee `plugins/withIndigoAndroidRelease.ts`, ver sección 8),
+corre `assembleRelease` + `bundleRelease` y sube APK y AAB como artifacts. Sin el secret
+configurado, el job falla explícito en vez de firmar en silencio con el keystore de debug.
+
+### `ios.yml` (FASE 11) — Swift real, `macos-latest` ⭐
 
 Este es el workflow que resuelve "no tengo Mac": el runner sí la tiene.
 
 ```yaml
-jobs:
-  ios:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: pnpm }
-      - run: pnpm install --frozen-lockfile
-      - run: npx expo prebuild -p ios --clean
-      - name: Install CocoaPods
-        run: cd ios && pod install
-      - name: Build (simulador, sin firma)
-        run: |
-          xcodebuild -workspace ios/Indigo.xcworkspace \
-            -scheme Indigo -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' build
-      - name: Test (XCTest de los módulos Swift)
-        run: |
-          xcodebuild -workspace ios/Indigo.xcworkspace \
-            -scheme Indigo -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 16' test
+- run: npx expo prebuild -p ios --clean
+- run: cd ios && pod install
+# El proyecto/esquema generado se llama "ndigo", no "Indigo" (gotcha de saneo de
+# caracteres no-ASCII documentado en docs/07 sección 3 — Expo elimina la "Í" del nombre
+# "Índigo" en vez de normalizarla).
+- run: |
+    xcodebuild build -workspace ios/ndigo.xcworkspace -scheme ndigo \
+      -destination "platform=iOS Simulator,name=$DEVICE_NAME" CODE_SIGNING_ALLOWED=NO
+# $DEVICE_NAME se elige en tiempo de ejecución con `xcrun simctl list devices available`
+# en vez de hardcodear "iPhone 16": la imagen macos-latest cambia de Xcode/simuladores
+# disponibles con el tiempo y un nombre fijo eventualmente deja de existir.
+- run: |
+    # Cada módulo con test_spec en su .podspec (biometrics, secure-store, card-view,
+    # connectivity) obtiene de CocoaPods un esquema "<Módulo>-Unit-Tests" al correr
+    # `pod install` con includeTests: true (plugins/withIndigoIosTests.ts). El workflow
+    # los DESCUBRE con `xcodebuild -list -json` en vez de hardcodear los 4 nombres —
+    # el sufijo exacto no se pudo confirmar sin una Mac real — y corre
+    # `xcodebuild test -scheme <cada uno>` sobre todos los que encuentre.
 ```
 
-Esto **compila y testea el Swift de `modules/*/ios/*.swift`** en cada PR. Es la validación real
-de la capa iOS de este proyecto.
+Esto **compila el Swift de `modules/*/ios/*.swift` de verdad** (vía CocoaPods, más el
+TurboModule "bare" `indigo-device` dentro del propio target de la app) y corre su XCTest en
+cada PR. `indigo-device` queda fuera del XCTest automático a propósito: no es un Pod (se
+compila directo en el target de la app, sin `.podspec`), así que no tiene `test_spec` —
+detalle completo en `docs/07` sección 4.4.
 
-**Recomendado en GitHub** → *Settings → Branches*: exigir estos tres checks (`ci`, `android`
-en su versión rápida, `ios`) antes de mergear a `develop`/`main`.
+**Bug real encontrado al preparar esta fase:** los 4 `.podspec` con
+`source_files = "**/*.{h,m,mm,swift,hpp,cpp}"` (glob recursivo desde las FASES 6-8 y 10)
+arrastraban también `Tests/*.swift` al target **principal** del pod, no a un `test_spec`
+separado — `import XCTest` sin el framework enlazado y `@testable import` del propio módulo
+que se estaba compilando. Nunca se manifestó porque hasta esta fase nada había corrido
+`pod install`/`xcodebuild` de verdad. Se corrigió acotando `source_files` al nivel superior
+de `ios/` y moviendo `Tests/` a un bloque `test_spec` (mismo patrón que usa
+`ExpoModulesCore.podspec`, la referencia real inspeccionada para escribir esto).
+
+**Recomendado en GitHub** → *Settings → Branches*: exigir estos checks (`ci`,
+`android / build-and-test`, `ios / build-and-test`) antes de mergear a `develop`/`main`.
+
+**Nota sobre verificación de estos dos workflows:** a diferencia del resto del proyecto, la
+FASE 11 sí se pudo verificar de punta a punta — porque su verificación consiste,
+precisamente, en dejar corriendo `android.yml`/`ios.yml` en el PR real de GitHub Actions.
+El detalle del resultado de esa primera corrida real queda en `docs/07` sección 4.6.
 
 ---
 
@@ -119,6 +144,13 @@ React Native Web renderiza las pantallas y la navegación en el navegador (los m
 propios se mockean/stubean detrás de la interfaz de `core/services`, ver `docs/03`). Se publica
 `./dist` a GitHub Pages igual que la demo del repo Ionic hermano — da un link navegable para
 portafolio sin compilar nada nativo.
+
+**`.github/workflows/pages.yml`** (FASE 11): en cada push a `main`, exporta la web
+(`pnpm build:web`) y publica `./dist` con `actions/upload-pages-artifact` +
+`actions/deploy-pages` — el flujo oficial de GitHub Actions para Pages (sin rama `gh-pages`
+manual). Requiere un paso único de configuración manual en el repo: *Settings → Pages → Build
+and deployment → Source: **GitHub Actions*** (no es algo que un workflow pueda activarse a sí
+mismo la primera vez).
 
 ### Verificación visual sin emulador ni dispositivo
 
@@ -171,9 +203,13 @@ npx eas build --platform ios --profile preview        # requiere cuenta Apple De
                                                         # registrar el iPhone (TestFlight o ad-hoc)
 ```
 
-`eas.json` define perfiles `development` / `preview` / `production`. EAS compila en la nube de
-Expo (no requiere Mac tampoco) y devuelve un link/QR para instalar. Es la vía recomendada para
-probar en el iPhone físico del usuario sin depurar en Xcode.
+`eas.json` (FASE 11, en la raíz del repo) define los tres perfiles: `development`
+(`developmentClient` + APK, para iterar con Dev Client) `preview` (APK instalable directo,
+canal `preview`) y `production` (AAB para Play Store / `.ipa` para App Store, `autoIncrement`
+del número de build, canal `production`). EAS compila en la nube de Expo (no requiere Mac
+tampoco) y devuelve un link/QR para instalar. Es la vía recomendada para probar en el iPhone
+físico del usuario sin depurar en Xcode — no se ejecutó ningún build real en esta fase (requiere
+cuenta de Expo con créditos/plan), el archivo queda listo para cuando el usuario la tenga.
 
 ---
 

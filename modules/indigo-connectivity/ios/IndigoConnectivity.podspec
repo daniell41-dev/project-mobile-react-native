@@ -19,5 +19,14 @@ Pod::Spec.new do |s|
     'DEFINES_MODULE' => 'YES',
   }
 
-  s.source_files = "**/*.{h,m,mm,swift,hpp,cpp}"
+  # Solo el nivel superior de ios/: Tests/ NO debe entrar aquí (ver test_spec abajo). Con
+  # el glob recursivo "**/*" que traía este archivo hasta la FASE 11, Tests/*.swift se
+  # colaba en el target principal del pod -- import XCTest sin XCTest.framework enlazado y
+  # @testable import IndigoConnectivity del propio módulo que se está compilando. Nunca se
+  # manifestó porque hasta esta fase nada corrió pod install/xcodebuild de verdad.
+  s.source_files = "*.{h,m,mm,swift,hpp,cpp}"
+
+  s.test_spec 'Tests' do |test_spec|
+    test_spec.source_files = 'Tests/**/*.{h,m,mm,swift}'
+  end
 end

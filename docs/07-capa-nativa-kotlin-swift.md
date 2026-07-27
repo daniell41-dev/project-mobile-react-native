@@ -714,6 +714,66 @@ real de una interfaz técnicamente presente pero sin validación de Internet —
 `connectivity.service.test.ts` en Jest cubre `getCurrentState`, `subscribe` y que la función de
 desuscripción llame a `EventSubscription.remove()`.
 
+### 4.6 FASE 11 — CI/CD nativo: el cierre del Bloque B
+
+Todo el código de las FASES 5-10 se escribió y se razonó **sin poder compilarlo de punta a
+punta** en este entorno: ni Android SDK/`dl.google.com` (Kotlin) ni Mac/Xcode (Swift), como
+quedó documentado en cada fase. FASE 11 no añade una fase nativa nueva — levanta
+`.github/workflows/android.yml` e `.github/workflows/ios.yml` (detalle completo, incluyendo el
+job de firma real, en `docs/02` PARTE 2), que son la primera vez que ese código se compila de
+verdad. Dos hallazgos concretos de esta fase, solo visibles al preparar la CI real:
+
+**El bug del `source_files` recursivo.** Los cuatro módulos con Expo Modules API que ya tenían
+Swift (`indigo-biometrics`, `indigo-secure-store`, `indigo-card-view`, `indigo-connectivity`)
+declaraban `s.source_files = "**/*.{h,m,mm,swift,hpp,cpp}"` en su `.podspec` — un glob
+recursivo que, sin querer, incluía también `Tests/*.swift` dentro del target **principal** del
+pod. `import XCTest` en un target que no enlaza `XCTest.framework`, más
+`@testable import IndigoBiometrics` dentro del propio módulo `IndigoBiometrics` que se está
+compilando, habría roto la build la primera vez que algo corriera `pod install` de verdad —
+cosa que no pasó hasta esta fase. Se corrigió acotando `source_files` al nivel superior de
+`ios/` (`"*.{h,m,mm,swift,hpp,cpp}"`, sin `**/`) y declarando `Tests/` en un bloque `test_spec`
+separado — el mismo patrón, verificado contra la referencia real, que usa el propio
+`ExpoModulesCore.podspec` (`node_modules/expo-modules-core/ExpoModulesCore.podspec`, línea
+127):
+
+```ruby
+s.test_spec 'Tests' do |test_spec|
+  test_spec.source_files = 'Tests/**/*.{h,m,mm,swift}'
+end
+```
+
+**Cómo llegan los tests a `xcodebuild test` sin tocar el `.pbxproj` de la app.** A diferencia
+del TurboModule "bare" `indigo-device` (FASE 9, sección 4.4), que sí necesitó cirugía manual
+del `.pbxproj` de la app porque no es un Pod, estos cuatro módulos **sí** son Pods — así que
+CocoaPods resuelve esto solo, sin tocar `ndigo.xcodeproj` en absoluto. `expo-modules-autolinking`
+(`scripts/ios/autolinking_manager.rb`) expone una opción documentada, `use_expo_modules!(:includeTests
+=> true)`, que le pasa `:testspecs => [...]` a `pod(...)` al instalar cada módulo — el propio
+`pod` DSL nativo de CocoaPods para test specs. Con eso, `pod install` genera **dentro de
+`Pods.xcodeproj`** un target y un esquema compartido `<Módulo>-Unit-Tests` por cada pod con
+`test_spec`, listo para `xcodebuild test -workspace ndigo.xcworkspace -scheme
+IndigoConnectivity-Unit-Tests ...`, sin ninguna dependencia del target de la app. Como la
+plantilla de Expo genera `use_expo_modules!` sin argumentos, `plugins/withIndigoIosTests.ts`
+(vía `withPodfile`) reescribe esa línea a `use_expo_modules!(:includeTests => true)` en cada
+`expo prebuild` — verificado localmente inspeccionando `ios/Podfile` tras
+`expo prebuild --clean` (no se pudo correr `pod install` en este entorno: no hay gem de
+CocoaPods instalada ni Xcode).
+
+**`indigo-device` queda fuera del XCTest automático, a propósito.** No tiene `.podspec` (se
+copia directo dentro del target de la app por `plugins/withIndigoDevice.ts`), así que no hay
+ningún `test_spec` al que engancharse — conectar su `IndigoDeviceTests.mm` habría exigido
+separar `IndigoDevice.mm` en dos piezas (la función pura testeable vs. el
+`RCT_EXPORT_MODULE`) para evitar símbolos duplicados si se compilara dos veces (una en la app,
+otra en un pod de test), o inyectar un target de test nuevo a mano en el `.pbxproj` con el
+paquete `xcode` (mucho más riesgo, cero forma de verificarlo sin Mac). Se dejó fuera del
+alcance de esta fase, documentado aquí como brecha conocida en vez de ocultarlo.
+
+**`android.yml`** es más directo: `ubuntu-latest` sí trae Android SDK real (a diferencia de
+este contenedor de desarrollo, ver sección 2), así que `./gradlew assembleDebug`/`test` corren
+sin ningún rodeo — es la primera vez que se confirma que los 5 módulos Kotlin (incluyendo el
+`NativeIndigoDeviceSpec` generado por Codegen en la FASE 9) compilan juntos de verdad. El job
+`release` (manual, `workflow_dispatch`) firma con un keystore real desde secrets — ver sección
+8 para el detalle del `signingConfig` inyectado por `plugins/withIndigoAndroidRelease.ts`.
+
 ---
 
 ## 5. Config plugins
@@ -746,6 +806,19 @@ que `android/app/src/main/AndroidManifest.xml` e `ios/ndigo/Info.plist` tuvieran
 nuevas (no hay Android SDK local para llegar a compilar, ver el aparte de la sección 2, pero la
 generación del manifest/plist no lo necesita).
 
+**FASE 11 añade dos plugins más**, cada uno enfocado en una sola cosa (a propósito, en vez de
+seguir creciendo `withIndigo.ts`):
+
+- `plugins/withIndigoIosTests.ts` — `withPodfile(config, config => ...)` reescribe la línea
+  `use_expo_modules!` (sin argumentos, la que trae la plantilla) a
+  `use_expo_modules!(:includeTests => true)`, para que CocoaPods genere los esquemas
+  `<Módulo>-Unit-Tests` de cada `test_spec` al correr `pod install`. Ver sección 4.6.
+- `plugins/withIndigoAndroidRelease.ts` — `withAppBuildGradle(config, config => ...)` +
+  `mergeContents` inyecta un `signingConfigs.release` que lee de 4 propiedades de Gradle
+  (`INDIGO_RELEASE_STORE_FILE`/`_STORE_PASSWORD`/`_KEY_ALIAS`/`_KEY_PASSWORD`) si existen, y
+  cae al keystore de debug si no — y reapunta `buildTypes.release.signingConfig` de
+  `signingConfigs.debug` (el default de la plantilla) a `signingConfigs.release`. Ver sección 8.
+
 ---
 
 ## 6. Keystore vs Keychain (detalle, FASE 7)
@@ -762,8 +835,31 @@ consuma un stream nativo continuo como una suscripción normal (`addListener`/`e
 
 ## 8. Firma y publicación
 
-*(Se amplía en la FASE 11: keystore de Android vía GitHub Secrets, perfiles de EAS Build, y por
-qué el Swift solo se firma/publica desde CI o EAS, nunca localmente en este entorno.)*
+**Android — keystore real solo en CI, nunca en el repo.** Por defecto, la plantilla de Expo
+firma el build type `release` con el mismo keystore de debug que trae — sirve para desarrollar,
+nunca para publicar (`android/app/build.gradle` generado, comentario `// Caution! In
+production, you need to generate your own keystore file.`). Como `android/` es CNG
+(se regenera en cada `expo prebuild`), un keystore real no puede referenciarse ahí a mano: hay
+que inyectar el `signingConfig` desde `plugins/withIndigoAndroidRelease.ts` (sección 5). El
+keystore en sí vive como secret base64 (`INDIGO_ANDROID_KEYSTORE_BASE64`) en GitHub Actions
+Secrets; el job `release` de `android.yml` (manual, `workflow_dispatch`, ver `docs/02` PARTE 2)
+lo decodifica a un archivo temporal del runner, escribe las 4 propiedades de Gradle, firma
+`assembleRelease`/`bundleRelease`, sube APK/AAB como artifacts y borra el archivo del runner al
+final (`if: always()`) — nunca se commitea ni queda en un log.
+
+**iOS — firma solo posible en CI o EAS.** Sin cuenta de Apple Developer ni Mac en este entorno,
+no hay forma de generar/gestionar un certificado de distribución ni un provisioning profile
+localmente. `ios.yml` compila y testea con `CODE_SIGNING_ALLOWED=NO` (build de simulador, no
+necesita firma). Publicar de verdad — TestFlight o App Store — requiere EAS Build (`eas.json`,
+perfil `production`), que gestiona los certificados en la nube de Expo con la cuenta de Apple
+Developer del usuario; no se ejecutó ningún build de EAS en esta fase (requiere esa cuenta).
+
+**EAS Build — `eas.json` (raíz del repo, FASE 11).** Tres perfiles: `development`
+(`developmentClient: true` + APK, para iterar con Dev Client sin pasar por el Play
+Store/App Store), `preview` (APK instalable directo, canal `preview` — la vía recomendada para
+que el usuario pruebe en su iPhone/Android físico sin depurar en Xcode/Android Studio) y
+`production` (AAB para Play Store, `.ipa` firmado para App Store, `autoIncrement` del número de
+build, canal `production`).
 
 ---
 

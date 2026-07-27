@@ -138,10 +138,19 @@ conexión a internet" visible en las 10 pantallas, verificado en vivo con Playwr
 `context.setOffline(true/false)`. Tests: JUnit + XCTest (6 casos cada uno) de la función pura +
 `connectivity.service.test.ts` en Jest. Detalle completo en `docs/07` sección 4.5.
 
-### FASE 11 — CI/CD nativo y entrega
-`android.yml` (Gradle → APK/AAB firmado, keystore por secrets). `ios.yml` (`macos-latest` →
-`xcodebuild`, compila y testea el Swift sin Mac). Perfiles EAS Build (`development`/`preview`/
-`production`) para el iPhone físico. Demo web (`expo export -p web`) a GitHub Pages.
+### FASE 11 — CI/CD nativo y entrega (cierra el Bloque B)
+`android.yml`: `ubuntu-latest` con Android SDK real → `assembleDebug` + `./gradlew test` (JUnit
+de los 5 módulos Kotlin) en cada PR; job manual (`workflow_dispatch`) `assembleRelease` +
+`bundleRelease` firmados con keystore real desde GitHub Secrets → APK/AAB como artifact.
+`ios.yml`: `macos-latest` → `pod install` + `xcodebuild build` (compila el Swift/Objective-C++
+de verdad) + `xcodebuild test` sobre los esquemas `<Módulo>-Unit-Tests` que CocoaPods genera
+para cada `.podspec` con `test_spec` (`plugins/withIndigoIosTests.ts`, descubiertos por nombre
+en vez de hardcodeados). `eas.json` con perfiles `development`/`preview`/`production`. Demo web
+(`pnpm build:web`) publicada a GitHub Pages en cada push a `main`
+(`.github/workflows/pages.yml`). Es la primera fase que se verifica de punta a punta: su
+verificación *es* dejar correr estos workflows reales, no solo inspeccionar lo generado — ver
+`docs/07` sección 4.6 para el bug real (`source_files` recursivo colando `Tests/` en el target
+principal de 4 pods) que solo salió a la luz al prepararla.
 
 ---
 
