@@ -72,7 +72,11 @@ y forzar a Jest a transformarla añadía fragilidad sin aportar valor sobre un m
 ### FASE 5 — Fundamentos nativos: prebuild, Gradle y config plugin propio
 `npx expo prebuild` + recorrido guiado del árbol generado (Android: Gradle, AndroidManifest,
 `MainActivity`/`MainApplication.kt`, R8, Hermes; iOS: `AppDelegate.swift`, `Info.plist`,
-`Podfile`). Config plugin propio `plugins/withIndigo.ts` (permisos de biometría/cámara).
+`Podfile`). Config plugin propio `plugins/withIndigo.ts` (permisos de biometría/cámara,
+`withAndroidManifest`/`withInfoPlist` a mano). Descubrimiento real de esta fase: este contenedor
+remoto no tiene Android SDK ni acceso a `dl.google.com`, así que `./gradlew assembleDebug` no
+compila aquí (sí se generó y se inspeccionó el proyecto) — detalle en `docs/07` sección 2 y
+`docs/02` PARTE 4.1.
 
 ### FASE 6 — Módulo nativo nº1: biometría (`modules/indigo-biometrics`)
 Kotlin: `androidx.biometric.BiometricPrompt` + corrutinas. Swift: `LocalAuthentication`/
@@ -108,14 +112,14 @@ Corrutinas + `Flow` expuestos a JS como suscripción de eventos. Tests JUnit (An
 
 | Requisito | Fase | Estado |
 |---|---|---|
-| React Native + TypeScript profundo | 0–4 | 🔜 |
-| React Navigation explícito (no expo-router) | 1 | 🔜 |
-| Arquitectura limpia, SOLID, GoF | 0–4, 3 | 🔜 |
-| Consumo de APIs REST, TanStack Query | 4 | 🔜 |
-| **Kotlin real (Gradle, Compose, coroutines, Keystore)** | 5–10 | 🔜 |
-| **Swift real (CocoaPods, SwiftUI, Keychain) — verificado en CI sin Mac** | 5–11 | 🔜 |
+| React Native + TypeScript profundo | 0–4 | ✅ |
+| React Navigation explícito (no expo-router) | 1 | ✅ |
+| Arquitectura limpia, SOLID, GoF | 0–4, 3 | ✅ |
+| Consumo de APIs REST, TanStack Query | 4 | ✅ |
+| **Kotlin real (Gradle, Compose, coroutines, Keystore)** | 5–10 | 🟡 |
+| **Swift real (CocoaPods, SwiftUI, Keychain) — verificado en CI sin Mac** | 5–11 | 🟡 |
 | New Architecture: Fabric, TurboModules, JSI, Codegen | 8, 9 | 🔜 |
-| Testing (Jest/RNTL, JUnit, XCTest) | 3–4, 6, 10 | 🔜 |
+| Testing (Jest/RNTL, JUnit, XCTest) | 3–4, 6, 10 | 🟡 |
 | CI/CD nativo (Gradle + macOS runner) | 11 | 🔜 |
 
 Leyenda: 🔜 planificado · 🟡 parcial · ✅ hecho. (Actualizar esta tabla al cerrar cada fase.)
