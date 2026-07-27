@@ -174,6 +174,78 @@ Cada fila se documenta aquí con: el problema que resuelve, el código Kotlin co
 Swift equivalente comentado, cómo se prueba (JUnit/XCTest), y cómo se consume desde
 `core/services/` en TypeScript.
 
+### 4.1 `indigo-biometrics` (FASE 6) — el primer módulo nativo real
+
+Primer módulo con Expo Modules API. Estructura (`modules/indigo-biometrics/`):
+
+```
+modules/indigo-biometrics/
+├── expo-module.config.json     # qué clase Kotlin/Swift registra cada plataforma
+├── android/
+│   ├── build.gradle              # dependencia androidx.biometric
+│   └── src/
+│       ├── main/java/dev/daniell/indigo/modules/biometrics/IndigoBiometricsModule.kt
+│       └── test/java/.../IndigoBiometricsModuleTest.kt   # JUnit
+├── ios/
+│   ├── IndigoBiometrics.podspec
+│   ├── IndigoBiometricsModule.swift
+│   └── Tests/IndigoBiometricsModuleTests.swift            # XCTest
+└── src/
+    ├── IndigoBiometrics.ts        # entry point nativo (requireNativeModule)
+    ├── IndigoBiometrics.web.ts    # stub "no disponible" para la plataforma web
+    └── IndigoBiometrics.types.ts
+```
+
+**API expuesta:** `isAvailable(): Promise<{ available; biometryType }>` y
+`authenticate(reason): Promise<{ success; error? }>` — `authenticate` **resuelve** con
+`success: false` en vez de rechazar la promesa (igual que `expo-local-authentication`): un
+fallo biométrico es un resultado esperado del dominio, no una excepción.
+
+**Kotlin** (`IndigoBiometricsModule.kt`) — `BiometricManager.canAuthenticate(BIOMETRIC_STRONG)`
+para `isAvailable`; para `authenticate`, `BiometricPrompt` es una API basada en callbacks
+(`AuthenticationCallback`), así que se envuelve en `suspendCancellableCoroutine` para exponerla
+como una función `suspend`. La sintaxis idiomática de Expo Modules Kotlin para esto es
+`AsyncFunction("authenticate") Coroutine { reason -> ... }` (el infix `Coroutine` viene de
+`expo.modules.kotlin.functions.AsyncFunctionBuilder`, ver
+`node_modules/expo-modules-core/android/.../AsyncFunctionBuilder.kt`) — sin él, `AsyncFunction`
+solo acepta closures no-`suspend`. `continuation.invokeOnCancellation { prompt.cancelAuthentication() }`
+cierra el prompt si la promesa de JS se cancela.
+
+**Swift** (`IndigoBiometricsModule.swift`) — `LAContext.canEvaluatePolicy(...)` para
+`isAvailable` (además expone `biometryType`: `.faceID`/`.touchID`, algo que Android no puede
+distinguir por API pública — de ahí que el tipo `BiometryType` en TS tenga `'biometric'`
+genérico para Android y `'faceId'`/`'touchId'` específicos para iOS). `LAContext.evaluatePolicy`
+es *callback-based*, no tiene variante `async` nativa de Apple, así que se envuelve en
+`withCheckedContinuation` — el equivalente Swift exacto de `suspendCancellableCoroutine` en
+Kotlin. La función de `AsyncFunction` en sí se declara `async` gracias al overload de
+`ConcurrentFunctionFactories.swift` (`(A0, repeat each A) async throws -> R`).
+
+**Records (DTOs nativos):** ambos lados devuelven un objeto tipado en vez de un mapa suelto —
+`class BiometricsAvailability(...) : Record` en Kotlin (con `@Field`), `struct
+BiometricsAvailability: Record` en Swift (con la property wrapper `@Field`). Expo serializa
+estos records a objetos JS automáticamente por reflexión sobre los campos anotados.
+
+**Tests:** `mapBiometricErrorCode`/`mapBiometricErrorCode(_:)` se extrajeron como función de
+paquete (Kotlin) / función libre (Swift) — no un método privado — específicamente para poder
+testear el mapeo de códigos de error sin necesitar mockear `FragmentActivity`/`LAContext`.
+JUnit corre en CI (`android.yml`, FASE 11; no hay Android SDK local, ver sección 2). XCTest
+igual (`ios.yml`, FASE 11; no hay Mac local).
+
+**Consumo:** `core/services/biometrics.service.ts` — facade de una línea por método sobre
+`IndigoBiometrics` (alias `@modules/*` → `./modules/*`, añadido en `tsconfig.json` y
+`babel.config.js` en esta fase). `ProfileScreen` lo usa de verdad: el toggle "Seguridad y
+biometría" llama a `isAvailable()` al montar (para mostrar "Face ID"/"Touch ID"/"Biometría"/"No
+disponible") y a `authenticate(reason)` al activarlo, sin quedar como código muerto.
+
+**Jest:** el módulo nativo no existe en el entorno de test (Jest no compila Kotlin/Swift). Se
+mockea globalmente en `jest.setup.js` con el mismo stub "no disponible" que usa la plataforma
+web — mismo patrón que ya existía para `@react-native-async-storage/async-storage`.
+
+**Verificación sin Android SDK/Mac:** `npx expo-modules-autolinking resolve --platform android
+--json` / `--platform ios --json` confirman que el módulo se detecte y resuelva correctamente
+(nombre de paquete, clase Kotlin totalmente calificada, nombre del pod/módulo Swift) sin
+necesitar compilar — es la forma de verificar el autolinking en este entorno.
+
 ---
 
 ## 5. Config plugins
