@@ -5,8 +5,8 @@ import { useAuthStore } from '@/core/stores/auth.store';
 import { renderWithProviders } from '@/shared/testing/renderWithProviders';
 
 describe('App', () => {
-  afterEach(() => {
-    useAuthStore.getState().logout();
+  afterEach(async () => {
+    await useAuthStore.getState().logout();
   });
 
   it('renders the pre-auth flow (Onboarding) by default', async () => {
@@ -24,7 +24,7 @@ describe('App', () => {
     // escenario (mutar el store fuera de un evento de UI), inofensivo: los asserts
     // siguen verificando el comportamiento real.
     await act(async () => {
-      useAuthStore.getState().login();
+      await useAuthStore.getState().login('andrea@correo.mx', 'password123');
     });
 
     const profileTab = await findByText('Perfil');
@@ -37,6 +37,6 @@ describe('App', () => {
       fireEvent(themeToggle, 'valueChange', true);
     });
 
-    expect(useAuthStore.getState().isAuthenticated).toBe(true);
+    expect(useAuthStore.getState().status).toBe('authenticated');
   });
 });

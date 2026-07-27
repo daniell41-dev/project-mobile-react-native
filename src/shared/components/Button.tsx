@@ -18,6 +18,7 @@ export function Button({ label, onPress, variant = 'solid' }: ButtonProps) {
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
       style={[
         styles.base,
         {
