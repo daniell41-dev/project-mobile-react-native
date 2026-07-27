@@ -16,6 +16,7 @@ import { Sora_400Regular, Sora_600SemiBold, Sora_700Bold } from '@expo-google-fo
 import { ThemeProvider } from '@/bootstrap/providers/ThemeProvider';
 import { RootNavigator } from '@/bootstrap/navigation/RootNavigator';
 import { toNavigationTheme } from '@/bootstrap/navigation/navigationTheme';
+import { useAuthStore } from '@/core/stores/auth.store';
 import { useTheme } from '@/shared/hooks/useTheme';
 
 SplashScreen.preventAutoHideAsync();
@@ -31,18 +32,25 @@ export default function App() {
     Sora_600SemiBold,
     Sora_700Bold,
   });
+  const authStatus = useAuthStore((state) => state.status);
+  const restoreSession = useAuthStore((state) => state.restoreSession);
+  const ready = fontsLoaded && authStatus !== 'loading';
+
+  useEffect(() => {
+    restoreSession();
+  }, [restoreSession]);
 
   const hideSplash = useCallback(async () => {
-    if (fontsLoaded) {
+    if (ready) {
       await SplashScreen.hideAsync();
     }
-  }, [fontsLoaded]);
+  }, [ready]);
 
   useEffect(() => {
     hideSplash();
   }, [hideSplash]);
 
-  if (!fontsLoaded) {
+  if (!ready) {
     return null;
   }
 
