@@ -7,7 +7,7 @@
 ## Estado actual
 
 **Bloque A (fundación JS/UI) completo: FASES 0–4.** El Bloque B (capa nativa Kotlin/Swift,
-FASES 5–11) es el eje del proyecto y ya tiene dos módulos nativos reales (FASES 6–7) — ver
+FASES 5–11) es el eje del proyecto y ya tiene tres módulos nativos reales (FASES 6–8) — ver
 `docs/04-roadmap-y-fases.md`.
 
 | Fase | Contenido | Estado |
@@ -20,6 +20,7 @@ FASES 5–11) es el eje del proyecto y ya tiene dos módulos nativos reales (FAS
 | FASE 5 | Fundamentos nativos: prebuild, recorrido Gradle/Xcode, config plugin propio | ✅ |
 | FASE 6 | Módulo nativo `indigo-biometrics`: Kotlin (BiometricPrompt) + Swift (LAContext) | ✅ |
 | FASE 7 | Módulo nativo `indigo-secure-store`: Keystore + `EncryptedSharedPreferences` / Keychain | ✅ |
+| FASE 8 | Módulo nativo `indigo-card-view`: vista Fabric, Jetpack Compose + SwiftUI | ✅ |
 
 ---
 
@@ -128,6 +129,19 @@ solo cambió qué hay detrás de la interfaz `StorageService`. `theme.store.ts` 
 En web cae a `localStorage` (sin cifrar, solo para que la demo funcione punta a punta) —
 verificado con Playwright: login, recarga de página, la sesión sigue activa. Detalle completo en
 `docs/07-capa-nativa-kotlin-swift.md` sección 4.2.
+
+## Módulo nativo: vista de la tarjeta (FASE 8)
+
+`modules/indigo-card-view` es la primera **vista** nativa del proyecto (no una función): un
+`ExpoView` clásico con un `ComposeView` embebido en Android y un `UIHostingController` embebido
+en iOS, con props (`holderName`, `last4`, `frozen`, `accentColor`) y un evento nativo→JS
+(`onPress`). `CardVisual` pasó de ser 100% React Native a un adaptador delgado sobre esta vista.
+Verificado con Playwright sobre el fallback web (Fabric no existe en RN Web): togglear
+"Congelar tarjeta" en `CardsScreen` actualiza la tarjeta en vivo con "CONGELADA", probando que el
+flujo de props funciona de punta a punta — el render nativo real de Compose/SwiftUI queda para
+cuando haya un dispositivo/emulador o CI (FASE 11). Decisiones de diseño (por qué se eligió la
+API clásica de vistas sobre la más nueva basada en `coreFeatures: compose`) en
+`docs/07-capa-nativa-kotlin-swift.md` sección 4.3.
 
 ## Qué se puede verificar en este entorno (sin Mac, sin emulador Android)
 

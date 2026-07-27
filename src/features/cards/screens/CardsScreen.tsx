@@ -34,7 +34,7 @@ export function CardsScreen(_props: Props) {
         Tarjetas
       </AppText>
 
-      <CardVisual card={card} />
+      <CardVisual card={card} frozen={frozen} />
 
       <View style={styles.tileRow}>
         <View
