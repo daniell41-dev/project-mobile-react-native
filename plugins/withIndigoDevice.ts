@@ -5,6 +5,7 @@ import path from 'path';
 import {
   ConfigPlugin,
   IOSConfig,
+  withAppBuildGradle,
   withDangerousMod,
   withMainApplication,
   withPlugins,
@@ -129,6 +130,25 @@ const withIndigoDeviceAndroidSources: ConfigPlugin = (config) =>
     },
   ]);
 
+// El :app generado no trae testImplementation junit:junit (nada dentro de :app lo
+// necesitaba antes de que IndigoDeviceModuleTest.kt se copiara ahí arriba). Sin esto,
+// ./gradlew test falla igual que fallaba en los 4 módulos con build.gradle propio antes
+// de agregarles la misma dependencia -- "Unresolved reference 'junit'". Confirmado real
+// en CI (android.yml).
+const withIndigoDeviceAndroidTestDependency: ConfigPlugin = (config) =>
+  withAppBuildGradle(config, (config) => {
+    config.modResults.contents = mergeContents({
+      src: config.modResults.contents,
+      newSrc: "    testImplementation 'junit:junit:4.13.2'",
+      tag: 'indigo-device-test-junit',
+      anchor: /^dependencies \{$/m,
+      offset: 1,
+      comment: '    //',
+    }).contents;
+
+    return config;
+  });
+
 const withIndigoDeviceMainApplication: ConfigPlugin = (config) =>
   withMainApplication(config, (config) => {
     let contents = config.modResults.contents;
@@ -201,6 +221,7 @@ const withIndigoDeviceXcodeProject: ConfigPlugin = (config) =>
 const withIndigoDevice: ConfigPlugin = (config) =>
   withPlugins(config, [
     withIndigoDeviceAndroidSources,
+    withIndigoDeviceAndroidTestDependency,
     withIndigoDeviceMainApplication,
     withIndigoDeviceIosSources,
     withIndigoDeviceXcodeProject,
