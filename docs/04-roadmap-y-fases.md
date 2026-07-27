@@ -99,8 +99,13 @@ XCTest de la validación de claves + mock con estado en memoria en Jest. Detalle
 sección 4.2.
 
 ### FASE 8 — Vista nativa con Fabric (`modules/indigo-card-view`)
-`ExpoView` con **Jetpack Compose** (Kotlin) y **SwiftUI** (Swift) para el visual de la tarjeta:
-props nativas + evento nativo→JS. Enseña view managers bajo la New Architecture.
+`ExpoView` (API clásica, elegida sobre la nueva `coreFeatures: compose`/`ExpoSwiftUI.View` por
+menor riesgo sin poder compilar en este entorno — ver `docs/07` 4.3) con un `ComposeView`
+embebido (Kotlin) y un `UIHostingController` embebido (Swift) para el visual de la tarjeta.
+Props (`holderName`/`last4`/`frozen`/`accentColor`) + evento nativo→JS (`onPress`). Reemplaza
+`CardVisual`, que queda como adaptador delgado. Enseña view managers bajo la New Architecture:
+state hoisting en Compose vs reasignar `rootView` en SwiftUI. Tests: JUnit + XCTest de
+`parseAccentColor` (validación de un string arbitrario desde JS) + mock en Jest.
 
 ### FASE 9 — TurboModule "bare" con Codegen (`modules/indigo-device`)
 Sin Expo Modules API: spec TS → Codegen → Kotlin (`NativeIndigoDeviceSpec`) + Swift/ObjC++.

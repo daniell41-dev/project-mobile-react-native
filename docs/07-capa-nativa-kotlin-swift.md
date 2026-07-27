@@ -316,6 +316,101 @@ la preferencia de tema — no es información sensible, y forzarla por Keystore/
 usar la herramienta equivocada para el trabajo (cifrar algo que no lo necesita, más lento y sin
 ningún beneficio de seguridad real).
 
+### 4.3 `indigo-card-view` (FASE 8) — la primera vista nativa bajo Fabric
+
+Los dos módulos anteriores son **funciones** (`AsyncFunction`, sin UI propia). Este es distinto:
+una **vista** — lo que el roadmap llama "view manager", el otro pilar de la New Architecture
+además de TurboModules (ver sección 1). Reemplaza `CardVisual`, que hasta la FASE 3 era 100%
+React Native (`LinearGradient` + `Text`).
+
+**Dos generaciones de API conviven en Expo Modules para vistas nativas**, y elegimos la más
+antigua/estable a propósito:
+
+1. **Clásica** (`ExpoView` + `Prop`/`Events`) — existe desde los inicios de Expo Modules API,
+   documentada de sobra, no depende de ninguna feature flag adicional del proyecto.
+2. **Moderna** (`View<Props>(name) { Content { props -> ... } }`, con `ComposeProps`/
+   `ExpoSwiftUI.View`) — DSL funcional más reciente que integra Compose/SwiftUI de forma más
+   directa, pero en Android requiere activar `"coreFeatures": ["compose"]` en
+   `expo-module.config.json`, lo que cambia cómo se compila **todo el proyecto**
+   `expo-modules-core` (su propio `build.gradle` tiene un `src/compose` y un `src/withoutCompose`
+   condicionados a esa flag — ver `node_modules/expo-modules-core/android/build.gradle`).
+
+Se eligió la vía **clásica** para `indigo-card-view`: sin Android SDK ni Mac en este entorno (FASE
+5) no hay forma de compilar y confirmar que la flag `coreFeatures` se propaga correctamente de
+punta a punta: menos superficie sin verificar, mismo resultado visual. Es además más simétrica
+entre plataformas — Android e iOS usan literalmente el mismo patrón: `ExpoView` (clase base) +
+un contenedor del framework de UI declarativo del sistema embebido a mano.
+
+```
+modules/indigo-card-view/
+├── expo-module.config.json
+├── android/
+│   ├── build.gradle                 # plugin del compilador de Compose + androidx.compose.foundation
+│   └── src/
+│       ├── main/java/.../IndigoCardView.kt        # ExpoView + ComposeView embebido
+│       ├── main/java/.../IndigoCardViewModule.kt   # registro: Name, View, Prop, Events
+│       └── test/java/.../IndigoCardViewTest.kt      # JUnit de parseAccentColor
+├── ios/
+│   ├── IndigoCardView.podspec
+│   ├── IndigoCardView.swift          # ExpoView + UIHostingController embebido
+│   ├── IndigoCardViewModule.swift     # registro: Name, View, Prop, Events
+│   └── Tests/IndigoCardViewTests.swift
+└── src/
+    ├── IndigoCardView.tsx             # requireNativeView('IndigoCardView')
+    ├── IndigoCardView.web.tsx          # fallback RN puro (Fabric no existe en RN Web)
+    └── IndigoCardView.types.ts
+```
+
+**Props → nativo:** `holderName`, `last4`, `frozen`, `accentColor` (string hex). Cada uno tiene
+un `Prop("nombre") { view, value -> view.setXxx(value) }` en el módulo — el mismo mecanismo
+imperativo que cualquier vista clásica de React Native (`ViewManager`/prop setters), solo que
+aquí el setter actualiza un `MutableState`/`@State`-equivalente que Compose/SwiftUI observan, así
+que cambiar la prop desde JS dispara una recomposición/actualización de la UI nativa
+automáticamente — no hace falta invalidar/redibujar nada a mano.
+
+**Evento nativo → JS:** `onPress`. `val onPress by EventDispatcher<Unit>()` (Kotlin) / `let
+onPress = EventDispatcher()` (Swift) son propiedades de instancia de la vista; `Events("onPress")`
+en el módulo las conecta con el sistema de eventos de Fabric. La vista los invoca
+(`onPress(Unit)` / `onPress()`) dentro del gesto de tap de Compose/SwiftUI. En JS llega como
+cualquier evento nativo de React Native: una prop `onPress: (event: NativeSyntheticEvent<...>) =>
+void`.
+
+**Kotlin** (`IndigoCardView.kt`) — `ExpoView` (que en Android sigue siendo la clase clásica,
+extiende `LinearLayout`) con un `ComposeView` hijo añadido en el `init`. El estado (`holderName`,
+`last4`, `frozen`, `accentColor`) se guarda con `by mutableStateOf(...)` en la propia vista — un
+patrón de "state hoisting" fuera de un `@Composable`, perfectamente válido en Kotlin: como
+`setContent { CardContent(holderName, ...) }` lee esas propiedades `State`, Compose se suscribe
+solo y recompone cuando cambian, sin que la vista tenga que llamar a nada como
+`invalidate()`/`requestLayout()`.
+
+**Swift** (`IndigoCardView.swift`) — mismo patrón con `UIHostingController<CardContent>`: sus
+`didSet` en `holderName`/`last4`/`frozen`/`accentColor` llaman a `updateContent()`, que reemplaza
+`hostingController.rootView` con una nueva instancia de la struct `CardContent` (SwiftUI no tiene
+observación automática de propiedades sueltas como Compose; hay que reasignar `rootView` a mano
+para forzar el re-render — la diferencia real entre los dos frameworks que vale la pena anotar
+para una entrevista).
+
+**Validación de la prop `accentColor`:** ambos lados exponen `parseAccentColor` como función
+libre/de paquete — recibe un string arbitrario desde JS (nunca hay que confiar en el input) y
+cae a un morado por defecto si no es un hex de 6 dígitos válido. Es, otra vez, la única lógica
+pura de este módulo sin necesitar un árbol de UI real montado, cubierta por JUnit/XCTest.
+
+**`IndigoCardView.web.tsx`:** Fabric no existe en React Native Web — no hay ningún equivalente a
+`requireNativeComponent` que funcione ahí. El fallback es RN puro (`LinearGradient` + `Text`,
+mismo look que la implementación pre-FASE 8), con la misma superficie de props. Es lo único que
+se puede ver renderizado en este entorno (capturado con Playwright); el render nativo real de
+Compose/SwiftUI queda sin verificar visualmente hasta tener un dispositivo/emulador o CI (FASE 11)
+— coherente con la limitación de Android SDK/Mac ya documentada en la sección 2.
+
+**Verificado en Playwright:** al tocar "Congelar tarjeta" en `CardsScreen`, el estado `frozen`
+local se propaga a `CardVisual` → `IndigoCardView`, y la tarjeta muestra "CONGELADA" en vivo — la
+prueba de que el flujo de props (JS → prop nativa → UI) funciona de punta a punta, aunque sea
+sobre el fallback web. El evento `onPress` (tocar la tarjeta) sí dispara el handler — se
+comprobó que `Alert.alert(...)` se invoca — pero `react-native-web`'s `Alert.alert` es un
+no-op intencional (`static alert() {}`, ver `node_modules/react-native-web/src/exports/Alert`),
+así que no hay ningún diálogo que capturar en el navegador; es el mismo comportamiento (silencioso
+en web) que ya tienen todos los demás `Alert.alert` de la app, no algo nuevo de este módulo.
+
 ---
 
 ## 5. Config plugins
