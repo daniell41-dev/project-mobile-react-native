@@ -1,83 +1,166 @@
+import { useState } from 'react';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { StyleSheet, Switch, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Alert, StyleSheet, Switch, View } from 'react-native';
 
 import { ProfileStackParamList } from '@/bootstrap/navigation/types';
+import { DataService } from '@/core/services/data.service';
 import { useAuthStore } from '@/core/stores/auth.store';
 import { useThemeStore } from '@/core/stores/theme.store';
-import { DataService } from '@/core/services/data.service';
+import { AppText } from '@/shared/components/AppText';
 import { Button } from '@/shared/components/Button';
+import { Chip } from '@/shared/components/Chip';
+import { ListRow } from '@/shared/components/ListRow';
 import { Screen } from '@/shared/components/Screen';
+import { SectionHeader } from '@/shared/components/SectionHeader';
 import { useTheme, useThemeMode } from '@/shared/hooks/useTheme';
-import { fontFamily, fontSize } from '@/theme/typography';
 
 type Props = NativeStackScreenProps<ProfileStackParamList, 'Profile'>;
+
+function comingSoon(feature: string) {
+  Alert.alert(feature, 'Próximamente en Índigo.');
+}
 
 export function ProfileScreen(_props: Props) {
   const theme = useTheme();
   const mode = useThemeMode();
-  const setPreference = useThemeStore((state) => state.setPreference);
+  const setThemePreference = useThemeStore((state) => state.setPreference);
   const logout = useAuthStore((state) => state.logout);
   const user = DataService.getUser();
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
   return (
     <Screen>
-      <Text style={[styles.title, { color: theme.colors.text }]}>Perfil</Text>
+      <AppText variant="screenTitle" style={styles.title}>
+        Perfil
+      </AppText>
 
-      <View style={[styles.headerCard, { backgroundColor: theme.colors.surface }]}>
-        <Text style={{ color: theme.colors.text, fontFamily: fontFamily.uiSemiBold }}>
-          {user.name}
-        </Text>
-        <Text style={{ color: theme.colors.textDim }}>{user.email}</Text>
-        {user.verified && (
-          <View style={[styles.chip, { backgroundColor: theme.colors.up }]}>
-            <Text style={styles.chipLabel}>Verificada</Text>
-          </View>
-        )}
+      <View
+        style={[
+          styles.headerCard,
+          { backgroundColor: theme.colors.surface, borderRadius: theme.radii.md },
+        ]}
+      >
+        <View style={[styles.avatar, { backgroundColor: theme.colors.surface2 }]}>
+          <AppText variant="itemTitle" tone="accent">
+            {user.initials}
+          </AppText>
+        </View>
+        <View style={styles.headerTextGroup}>
+          <AppText variant="itemTitle" numberOfLines={1} ellipsizeMode="tail">
+            {user.name}
+          </AppText>
+          <AppText variant="subtitle" tone="textDim" numberOfLines={1} ellipsizeMode="tail">
+            {user.email}
+          </AppText>
+        </View>
+        {user.verified && <Chip label="Verificada" color="success" />}
       </View>
 
-      <View style={[styles.row, { borderBottomColor: theme.colors.hairline }]}>
-        <Text style={{ color: theme.colors.text }}>Modo oscuro</Text>
-        <Switch
-          value={mode === 'dark'}
-          onValueChange={(value) => setPreference(value ? 'dark' : 'light')}
+      <SectionHeader title="Cuenta" />
+      <ListRow
+        title="Datos personales"
+        leading={<Ionicons name="person-outline" size={20} color={theme.colors.textDim} />}
+        detail
+        onPress={() => comingSoon('Datos personales')}
+      />
+      <ListRow
+        title="Mis cuentas y CLABE"
+        subtitle={user.clabe}
+        leading={<Ionicons name="wallet-outline" size={20} color={theme.colors.textDim} />}
+        detail
+        onPress={() => comingSoon('Mis cuentas y CLABE')}
+      />
+      <ListRow
+        title="Seguridad y biometría"
+        leading={<Ionicons name="shield-checkmark-outline" size={20} color={theme.colors.textDim} />}
+        detail
+        onPress={() => comingSoon('Seguridad y biometría')}
+      />
+
+      <View style={styles.section}>
+        <SectionHeader title="Preferencias" />
+        <ListRow
+          title="Notificaciones"
+          leading={<Ionicons name="notifications-outline" size={20} color={theme.colors.textDim} />}
+          trailing={
+            <Switch
+              value={notificationsEnabled}
+              onValueChange={setNotificationsEnabled}
+              accessibilityLabel="Notificaciones"
+            />
+          }
+        />
+        <ListRow
+          title="Modo oscuro"
+          leading={<Ionicons name="moon-outline" size={20} color={theme.colors.textDim} />}
+          trailing={
+            <Switch
+              value={mode === 'dark'}
+              onValueChange={(value) => setThemePreference(value ? 'dark' : 'light')}
+              accessibilityLabel="Modo oscuro"
+            />
+          }
+        />
+        <ListRow
+          title="Idioma"
+          subtitle="Español"
+          leading={<Ionicons name="language-outline" size={20} color={theme.colors.textDim} />}
+          detail
+          onPress={() => comingSoon('Idioma')}
+        />
+        <ListRow
+          title="Ayuda y soporte"
+          leading={<Ionicons name="help-circle-outline" size={20} color={theme.colors.textDim} />}
+          detail
+          onPress={() => comingSoon('Ayuda y soporte')}
         />
       </View>
 
-      <Button label="Cerrar sesión" variant="outline" onPress={logout} />
+      <View style={styles.logoutSection}>
+        <Button label="Cerrar sesión" variant="danger" onPress={logout} />
+      </View>
+
+      <AppText variant="label" tone="textMute" style={styles.version}>
+        Índigo v0.0.1
+      </AppText>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   title: {
-    fontFamily: fontFamily.uiBold,
-    fontSize: fontSize.screenTitle,
     marginVertical: 16,
   },
   headerCard: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    gap: 4,
-  },
-  chip: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    marginTop: 4,
-  },
-  chipLabel: {
-    color: '#FFFFFF',
-    fontSize: fontSize.label,
-    fontFamily: fontFamily.uiSemiBold,
-  },
-  row: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    marginBottom: 24,
+    gap: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  headerTextGroup: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  section: {
+    marginTop: 16,
+  },
+  logoutSection: {
+    marginTop: 24,
+  },
+  version: {
+    textAlign: 'center',
+    marginTop: 16,
+    marginBottom: 8,
   },
 });
