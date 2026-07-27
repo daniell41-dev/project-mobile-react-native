@@ -6,9 +6,10 @@
 
 ## Estado actual
 
-**Bloque A (fundación JS/UI) completo: FASES 0–4.** El Bloque B (capa nativa Kotlin/Swift) tiene
-cinco módulos nativos reales (FASES 6–10) y ya levantó la CI que finalmente los compila y
-testea de punta a punta (FASE 11, en verificación — ver `docs/07` sección 4.6) — ver
+**Bloque A (fundación JS/UI) y Bloque B (capa nativa Kotlin/Swift) completos: FASES 0–11.**
+Cinco módulos nativos reales (FASES 6–10) y la CI que finalmente los compila y testea de punta
+a punta, en verde (FASE 11 — ver `docs/07` sección 4.6 para el recuento completo de los once
+bugs reales que esa CI encontró en el propio código de Índigo) — ver
 `docs/04-roadmap-y-fases.md`.
 
 | Fase | Contenido | Estado |
@@ -24,7 +25,7 @@ testea de punta a punta (FASE 11, en verificación — ver `docs/07` sección 4.
 | FASE 8 | Módulo nativo `indigo-card-view`: vista Fabric, Jetpack Compose + SwiftUI | ✅ |
 | FASE 9 | TurboModule "bare" `indigo-device`: sin Expo Modules API, Codegen verificado local | ✅ |
 | FASE 10 | Módulo nativo `indigo-connectivity`: `callbackFlow`/`AsyncStream` como evento suscribible | ✅ |
-| FASE 11 | CI/CD nativo: `android.yml`/`ios.yml` compilan y testean Kotlin/Swift de verdad + demo web | 🟡 |
+| FASE 11 | CI/CD nativo: `android.yml`/`ios.yml` compilan y testean Kotlin/Swift de verdad + demo web | ✅ |
 
 ---
 
@@ -197,21 +198,20 @@ con keystore real desde secrets) e `.github/workflows/ios.yml` (`macos-latest` �
 de cada módulo vía los esquemas `<Módulo>-Unit-Tests` que CocoaPods genera automáticamente para
 los `.podspec` con `test_spec`). Es la primera vez que ese código realmente compila.
 
-Preparar esta fase encontró un bug real: los 4 `.podspec` con Swift (`indigo-biometrics`,
-`indigo-secure-store`, `indigo-card-view`, `indigo-connectivity`) tenían un `source_files`
-recursivo que arrastraba también sus propios archivos `Tests/*.swift` al target **principal**
-del pod en vez de a un target de test separado — nunca se manifestó porque nada había corrido
-`pod install`/`xcodebuild` de verdad hasta ahora. Se corrigió con un bloque `test_spec` en cada
-podspec (mismo patrón que usa el propio `ExpoModulesCore.podspec`) y un config plugin
-(`plugins/withIndigoIosTests.ts`) que declara cada uno de los 4 pods a mano con
-`:testspecs => ['Tests']` antes de `use_expo_modules!` en el Podfile generado — el interruptor
-global `includeTests: true` (primer intento) rompió el primer `pod install` real de este
-proyecto al activar también el `test_spec` del propio SDK de Expo, ver `docs/07` sección 4.6.
+Preparar esta fase — y sobre todo, iterar sobre las corridas reales de `android.yml`/`ios.yml`
+en el PR — encontró **once bugs reales** en el código de las FASES 6-10, ninguno de diseño,
+todos de "esto no se verificó nunca de punta a punta": desde un `source_files` recursivo que
+colaba `Tests/*.swift` en el target principal de 4 pods, pasando por una versión vieja de
+`androidx.security:security-crypto` sin la clase `MasterKey`, un "platform declaration clash"
+de Kotlin, un literal hex-float inválido en Swift, un gap real en cómo Gradle alimenta Codegen
+para módulos "bare" como `indigo-device`, un path mal resuelto en el `.pbxproj` de ese mismo
+módulo, y JUnit ausente en los 5 módulos con test — hasta llegar a los cuatro checks
+(`ci`/`android`/`ios`/`release` manual) en verde. Recuento completo, con la causa raíz y la
+corrección de cada uno, en `docs/07-capa-nativa-kotlin-swift.md` sección 4.6.
 `modules/indigo-device` (el TurboModule "bare" de la FASE 9) queda fuera del XCTest automático a
 propósito — no es un Pod, así que no tiene `test_spec`; detalle en `docs/07` sección 4.6.
 `eas.json` (perfiles `development`/`preview`/`production`) y `.github/workflows/pages.yml`
-(demo web a GitHub Pages en cada push a `main`) completan la fase. Detalle técnico completo en
-`docs/07-capa-nativa-kotlin-swift.md` sección 4.6 y `docs/02-guia-deploy-y-ci.md` PARTE 2.
+(demo web a GitHub Pages en cada push a `main`) completan la fase.
 
 ## Qué se puede verificar en este entorno (sin Mac, sin emulador Android)
 

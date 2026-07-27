@@ -162,11 +162,11 @@ principal de 4 pods) que solo salió a la luz al prepararla.
 | React Navigation explícito (no expo-router) | 1 | ✅ |
 | Arquitectura limpia, SOLID, GoF | 0–4, 3 | ✅ |
 | Consumo de APIs REST, TanStack Query | 4 | ✅ |
-| **Kotlin real (Gradle, Compose, coroutines, Keystore)** | 5–10 | 🟡 |
-| **Swift real (CocoaPods, SwiftUI, Keychain) — verificado en CI sin Mac** | 5–11 | 🟡 |
-| New Architecture: Fabric, TurboModules, JSI, Codegen | 8, 9 | 🟡 |
-| Testing (Jest/RNTL, JUnit, XCTest) | 3–4, 6, 10 | 🟡 |
-| CI/CD nativo (Gradle + macOS runner) | 11 | 🔜 |
+| **Kotlin real (Gradle, Compose, coroutines, Keystore)** | 5–10 | ✅ |
+| **Swift real (CocoaPods, SwiftUI, Keychain) — verificado en CI sin Mac** | 5–11 | ✅ |
+| New Architecture: Fabric, TurboModules, JSI, Codegen | 8, 9 | ✅ |
+| Testing (Jest/RNTL, JUnit, XCTest) | 3–4, 6, 10 | ✅ |
+| CI/CD nativo (Gradle + macOS runner) | 11 | ✅ |
 
 Leyenda: 🔜 planificado · 🟡 parcial · ✅ hecho. (Actualizar esta tabla al cerrar cada fase.)
 
