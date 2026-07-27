@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "Índigo",
+    "slug": "indigo",
+    "scheme": "indigo",
+    "version": "0.0.1",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#0B0810",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "dev.daniell.indigo",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "dev.daniell.indigo",
+      "adaptiveIcon": {
+        "backgroundColor": "#820AD1",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0B0810",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 180
+        }
+      ]
+    ]
+  }
+}
