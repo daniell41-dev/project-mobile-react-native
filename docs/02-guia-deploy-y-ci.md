@@ -131,7 +131,7 @@ Android Studio ni Mac disponibles.
 
 ## PARTE 4: BUILD NATIVO REAL
 
-### 4.1 Android — 100% verificable en este entorno
+### 4.1 Android — verificable local si hay Android SDK; en este contenedor, no del todo
 
 ```bash
 npx expo prebuild -p android --clean
@@ -142,6 +142,19 @@ cd android
 
 Requiere JDK 17 + Android SDK command-line tools (sin Android Studio). El APK sale en
 `android/app/build/outputs/apk/debug/`.
+
+**Limitación real de este contenedor remoto (descubierta en la FASE 5):** este entorno no trae
+JDK 17 preinstalado (solo JDK 21 — se resuelve instalando `openjdk-17-jdk-headless` vía `apt`) y,
+más importante, **el proxy de salida bloquea `dl.google.com`** (`403 Forbidden`), que es de donde
+Gradle resuelve el Android Gradle Plugin y las dependencias de AndroidX vía el repositorio
+`google()`. No hay forma de instalarlo/evitarlo desde este contenedor. En la práctica, aquí se
+puede confirmar que `expo prebuild` genera el proyecto y que `gradlew --version` arranca (la
+descarga del propio Gradle sí funciona, vía `services.gradle.org`, que no está bloqueado), pero
+**no compilar** (`assembleDebug`/`test`). Detalle completo en
+`docs/07-capa-nativa-kotlin-swift.md` (sección 2). La verificación real de Android para este
+proyecto es `.github/workflows/android.yml` (FASE 11) sobre `ubuntu-latest`, que sí trae el SDK.
+En una máquina normal (Android Studio, o `sdkmanager` con acceso de red sin restringir) esto sí
+corre local sin problema — es una restricción de este contenedor específico, no del proyecto.
 
 ### 4.2 iOS — se compila en CI, no localmente
 
@@ -189,7 +202,8 @@ probar en el iPhone físico del usuario sin depurar en Xcode.
 - [ ] `pnpm lint && pnpm typecheck` OK
 - [ ] `pnpm test:ci` OK
 - [ ] `pnpm build:web` OK
-- [ ] (si hay cambios nativos) `./gradlew assembleDebug && ./gradlew test` OK local
+- [ ] (si hay cambios nativos) `./gradlew assembleDebug && ./gradlew test` OK local — o, si el
+      entorno no tiene Android SDK (ver PARTE 4.1), CI `android.yml` en verde
 - [ ] (si hay cambios nativos) CI `ios.yml` en verde (Swift compila y testea en `macos-latest`)
 - [ ] Todo pusheado y CI en verde
 
@@ -210,6 +224,9 @@ probar en el iPhone físico del usuario sin depurar en Xcode.
 
 ---
 
-**🎉 A desplegar.** El Android se verifica 100% en este entorno; el Swift se escribe aquí y se
-compila/testea en CI sobre `macos-latest` — esa combinación es la que permite trabajar en las dos
-plataformas nativas sin tener una Mac física.
+**🎉 A desplegar.** El proyecto Android se genera y se razona en este entorno (`expo prebuild`,
+lectura de Gradle/manifest); compilarlo (`assembleDebug`/`test`) depende de tener Android SDK —
+en el contenedor remoto de esta sesión no lo hay (ver PARTE 4.1), así que esa verificación queda
+para `.github/workflows/android.yml`. El Swift se escribe aquí y se compila/testea en CI sobre
+`macos-latest` — esa combinación es la que permite trabajar en las dos plataformas nativas sin
+tener una Mac física ni, en este caso concreto, Android Studio.

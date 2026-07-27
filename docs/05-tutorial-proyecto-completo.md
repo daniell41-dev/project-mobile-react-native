@@ -7,7 +7,7 @@
 ## Estado actual
 
 **Bloque A (fundación JS/UI) completo: FASES 0–4.** El Bloque B (capa nativa Kotlin/Swift,
-FASES 5–11) es el siguiente y es el eje del proyecto — ver `docs/04-roadmap-y-fases.md`.
+FASES 5–11) es el eje del proyecto y ya arrancó con la FASE 5 — ver `docs/04-roadmap-y-fases.md`.
 
 | Fase | Contenido | Estado |
 |---|---|---|
@@ -16,6 +16,7 @@ FASES 5–11) es el siguiente y es el eje del proyecto — ver `docs/04-roadmap-
 | FASE 2 | Autenticación real (mock): StorageService, authStore, LoginScreen | ✅ |
 | FASE 3 | Fidelidad visual de las 11 pantallas contra el handoff | ✅ |
 | FASE 4 | Charts reales en Análisis + capa REST (repos + TanStack Query) | ✅ |
+| FASE 5 | Fundamentos nativos: prebuild, recorrido Gradle/Xcode, config plugin propio | ✅ |
 
 ---
 
@@ -45,7 +46,9 @@ src/
 
 docs/                      # Reglas del proyecto (léelas en orden: 01 → 07)
 docs/design/                # Handoff de diseño de Índigo (prototipo, capturas, tokens)
-modules/                    # (a partir de la FASE 5) código nativo propio, Kotlin y Swift
+plugins/withIndigo.ts       # Config plugin propio (FASE 5): permisos Android/iOS
+modules/                    # (a partir de la FASE 6) código nativo propio, Kotlin y Swift
+android/, ios/               # Generados por `expo prebuild` (CNG) — en .gitignore, no versionan
 ```
 
 ## Decisión de nombres: `src/bootstrap/`, no `src/app/`
@@ -87,16 +90,31 @@ HTTP real es un solo flag en `core/config/env.ts`.
 donut para el gasto por categoría y `BarChart` para la tendencia mensual, con el mes activo
 resaltado en morado.
 
+## Fundamentos nativos (FASE 5)
+
+`npx expo prebuild --clean` genera `android/` e `ios/` a partir de `app.json` + `plugins/` +
+`modules/` (CNG — Continuous Native Generation, ambos gitignored). Recorrido completo del árbol
+generado, archivo por archivo, en `docs/07-capa-nativa-kotlin-swift.md` (secciones 2 y 3).
+
+`plugins/withIndigo.ts` es el primer config plugin propio: agrega los permisos que van a
+necesitar los módulos nativos de las FASES 6+ (`CAMERA`, `USE_BIOMETRIC` en Android;
+`NSCameraUsageDescription`, `NSFaceIDUsageDescription` en iOS) escribiendo directamente los
+mods `withAndroidManifest`/`withInfoPlist`, verificado inspeccionando el manifest/plist que
+genera `expo prebuild`.
+
 ## Qué se puede verificar en este entorno (sin Mac, sin emulador Android)
 
 - Lint, typecheck y tests JS: `pnpm lint && pnpm typecheck && pnpm test:ci`.
 - Export web (`pnpm build:web`) + captura con Playwright para fidelidad visual — así se ha
   verificado cada fase hasta ahora (flujo completo Onboarding → Login → tabs → Enviar →
   Análisis, en claro y oscuro).
-- Gradle/Kotlin (a partir de la FASE 5): `./gradlew assembleDebug && ./gradlew test` (Android
-  SDK command-line tools, sin Android Studio).
-- Swift (a partir de la FASE 5): **no localmente** — se compila y testea en el workflow
-  `ios.yml` sobre `macos-latest` (ver `docs/02-guia-deploy-y-ci.md`).
+- `expo prebuild`: sí, genera el árbol nativo completo sin problema.
+- Gradle/Kotlin: **parcial en este contenedor concreto** — no hay Android SDK ni acceso a
+  `dl.google.com` (bloqueado por el proxy de salida), así que `./gradlew assembleDebug`/`test`
+  no compilan aquí, aunque `gradlew --version` sí arranca. Detalle y la razón exacta en
+  `docs/07` sección 2 y `docs/02` PARTE 4.1. Se verifica de verdad en `android.yml` (FASE 11).
+- Swift: **no localmente** — se compila y testea en el workflow `ios.yml` sobre `macos-latest`
+  (ver `docs/02-guia-deploy-y-ci.md`).
 
 ---
 
