@@ -48,3 +48,24 @@ jest.mock('@modules/indigo-device/src/NativeIndigoDevice', () => ({
     getBatteryLevelAsync: jest.fn().mockResolvedValue(-1),
   },
 }));
+
+// modules/indigo-connectivity (FASE 10) tampoco tiene módulo nativo en Jest. A diferencia
+// de los mocks anteriores, este expone addListener/removeListener (NativeModule<TEventsMap>
+// extiende EventEmitter) porque connectivity.service.ts y useConnectivity los usan —
+// removeListener despacha a la desuscripción, igual que haría el EventEmitter real.
+jest.mock('@modules/indigo-connectivity/src/IndigoConnectivity', () => {
+  const listeners = new Set();
+  return {
+    __esModule: true,
+    default: {
+      getCurrentState: jest.fn().mockResolvedValue({ isConnected: true, type: 'unknown' }),
+      addListener: jest.fn((_eventName, listener) => {
+        listeners.add(listener);
+        return { remove: () => listeners.delete(listener) };
+      }),
+      removeListener: jest.fn((_eventName, listener) => {
+        listeners.delete(listener);
+      }),
+    },
+  };
+});

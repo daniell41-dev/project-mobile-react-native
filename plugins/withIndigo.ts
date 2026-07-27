@@ -12,7 +12,13 @@ import {
 // toque el manifest/plist por su cuenta — un solo lugar versionado en plugins/, no en
 // android/ ni ios/ (que son generados y se pierden en cada `expo prebuild`).
 
-const ANDROID_PERMISSIONS = ['android.permission.CAMERA', 'android.permission.USE_BIOMETRIC'];
+const ANDROID_PERMISSIONS = [
+  'android.permission.CAMERA',
+  'android.permission.USE_BIOMETRIC',
+  // modules/indigo-connectivity (FASE 10): requerido para que ConnectivityManager
+  // devuelva NetworkCapabilities reales en vez de null.
+  'android.permission.ACCESS_NETWORK_STATE',
+];
 
 const withIndigoAndroidPermissions: ConfigPlugin = (config) =>
   withAndroidManifest(config, (config) => {

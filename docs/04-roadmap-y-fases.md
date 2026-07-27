@@ -117,9 +117,26 @@ React Native 0.82+ es *bridgeless* (el bridge legacy fue eliminado; ver `docs/07
 Verificado corriendo Codegen localmente (`node node_modules/react-native/scripts/
 generate-codegen-artifacts.js`, no necesita SDK/Xcode) contra el spec real.
 
-### FASE 10 — Kotlin en profundidad: concurrencia y testing nativo
-Corrutinas + `Flow` expuestos a JS como suscripción de eventos. Tests JUnit (Android) y XCTest
-(iOS) de la lógica nativa.
+### FASE 10 — Kotlin en profundidad: concurrencia y testing nativo (`modules/indigo-connectivity`)
+Kotlin: `ConnectivityManager.NetworkCallback` envuelto en un `Flow` frío con `callbackFlow { ...
+awaitClose { } }` + `distinctUntilChanged()`. Swift: el equivalente exacto con
+`NWPathMonitor`/`AsyncStream` + `continuation.onTermination`. Primer módulo del bloque B que
+expone un **stream continuo**, no solo funciones: `Events("onConnectivityChange")` +
+`OnStartObserving`/`OnStopObserving` (arrancan/paran el monitor nativo solo mientras JS tiene
+listeners activos) + `sendEvent(...)`. `connectivityStateFrom(hasInternet, hasWifi, hasCellular)`
+(Kotlin) y `connectivityState(isConnected:usesWifi:usesCellular:)` (Swift) son funciones libres,
+mismo patrón que las FASES 6-9, para poder testearlas con JUnit/XCTest sin un `ConnectivityManager`
+o `NWPath` reales. Lado TS: `NativeModule<IndigoConnectivityEvents>` tipa `addListener`/`emit` de
+punta a punta (a diferencia de los módulos sin eventos de FASES 6-7, que usan `NativeModule<{}>`).
+Fallback web genuinamente funcional (no un stub "no disponible"): `navigator.onLine` +
+`window.addEventListener('online'/'offline', ...)` disparan el mismo evento
+`onConnectivityChange` vía `.emit()` sobre la instancia que devuelve `registerWebModule` (con
+`as unknown as InstanceType<...>` — su tipo declarado no coincide con lo que devuelve en
+runtime, ver `docs/07` sección 4.5). `core/services/connectivity.service.ts` +
+`shared/hooks/useConnectivity.ts` + `OfflineBanner` montado una vez en `App.tsx`: banner "Sin
+conexión a internet" visible en las 10 pantallas, verificado en vivo con Playwright alternando
+`context.setOffline(true/false)`. Tests: JUnit + XCTest (6 casos cada uno) de la función pura +
+`connectivity.service.test.ts` en Jest. Detalle completo en `docs/07` sección 4.5.
 
 ### FASE 11 — CI/CD nativo y entrega
 `android.yml` (Gradle → APK/AAB firmado, keystore por secrets). `ios.yml` (`macos-latest` →
@@ -138,7 +155,7 @@ Corrutinas + `Flow` expuestos a JS como suscripción de eventos. Tests JUnit (An
 | Consumo de APIs REST, TanStack Query | 4 | ✅ |
 | **Kotlin real (Gradle, Compose, coroutines, Keystore)** | 5–10 | 🟡 |
 | **Swift real (CocoaPods, SwiftUI, Keychain) — verificado en CI sin Mac** | 5–11 | 🟡 |
-| New Architecture: Fabric, TurboModules, JSI, Codegen | 8, 9 | 🔜 |
+| New Architecture: Fabric, TurboModules, JSI, Codegen | 8, 9 | 🟡 |
 | Testing (Jest/RNTL, JUnit, XCTest) | 3–4, 6, 10 | 🟡 |
 | CI/CD nativo (Gradle + macOS runner) | 11 | 🔜 |
 
