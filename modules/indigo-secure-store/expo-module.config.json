@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["IndigoSecureStoreModule"]
+  },
+  "android": {
+    "modules": ["dev.daniell.indigo.modules.securestore.IndigoSecureStoreModule"]
+  }
+}

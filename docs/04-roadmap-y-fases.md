@@ -89,8 +89,14 @@ errores (corren en CI, FASE 11 — sin SDK/Mac local) + mock en Jest. Verificado
 
 ### FASE 7 — Módulo nativo nº2: almacenamiento seguro (`modules/indigo-secure-store`)
 Kotlin: Android Keystore + `EncryptedSharedPreferences` (AES-256-GCM). Swift: Keychain
-(`SecItemAdd`/`SecItemCopyMatching`). Nueva implementación de `StorageService` para el token de
-auth (Strategy/DIP, escrito a mano con fines didácticos).
+(`SecItemAdd`/`SecItemCopyMatching`/`SecItemUpdate`/`SecItemDelete`, accesibilidad
+`AfterFirstUnlockThisDeviceOnly`). Nueva implementación (`SecureStorageService`) de
+`StorageService` para el token de auth — Strategy/DIP puro: `AuthService` no cambió, solo la
+implementación detrás de la interfaz (desde la FASE 2). `theme.store.ts` sigue en AsyncStorage
+a propósito (no es dato sensible). Web: fallback a `localStorage` (sin cifrar, solo para que la
+demo funcione de punta a punta, verificado con recarga de página en Playwright). Tests: JUnit +
+XCTest de la validación de claves + mock con estado en memoria en Jest. Detalle en `docs/07`
+sección 4.2.
 
 ### FASE 8 — Vista nativa con Fabric (`modules/indigo-card-view`)
 `ExpoView` con **Jetpack Compose** (Kotlin) y **SwiftUI** (Swift) para el visual de la tarjeta:

@@ -246,6 +246,76 @@ web — mismo patrón que ya existía para `@react-native-async-storage/async-st
 (nombre de paquete, clase Kotlin totalmente calificada, nombre del pod/módulo Swift) sin
 necesitar compilar — es la forma de verificar el autolinking en este entorno.
 
+### 4.2 `indigo-secure-store` (FASE 7) — reemplaza AsyncStorage para el token de sesión
+
+Segundo módulo nativo. A diferencia de `indigo-biometrics`, este **sustituye una
+implementación que ya existía** (`AsyncStorageService` desde la FASE 2) detrás de la misma
+interfaz `StorageService` (`core/services/storage.service.ts`) — el caso de libro de Strategy +
+DIP: `AuthService` no cambió ni una línea.
+
+```
+modules/indigo-secure-store/
+├── expo-module.config.json
+├── android/
+│   ├── build.gradle                # dependencia androidx.security:security-crypto
+│   └── src/
+│       ├── main/java/.../IndigoSecureStoreModule.kt
+│       └── test/java/.../IndigoSecureStoreModuleTest.kt
+├── ios/
+│   ├── IndigoSecureStore.podspec
+│   ├── IndigoSecureStoreModule.swift
+│   └── Tests/IndigoSecureStoreModuleTests.swift
+└── src/
+    ├── IndigoSecureStore.ts        # entry point nativo
+    └── IndigoSecureStore.web.ts    # fallback a localStorage (ver más abajo)
+```
+
+**API:** `getItem(key)` / `setItem(key, value)` / `removeItem(key)` — deliberadamente idéntica a
+`StorageService`, así que `SecureStorageService` (la nueva clase en `storage.service.ts`) es un
+wrapper de una línea por método, sin ninguna adaptación.
+
+**Kotlin** (`IndigoSecureStoreModule.kt`) — `androidx.security.crypto.EncryptedSharedPreferences`
+sobre una `MasterKey` con esquema `AES256_GCM` respaldada por **Android Keystore** (la clave de
+cifrado nunca sale del hardware/TEE del dispositivo; `EncryptedSharedPreferences` la usa para
+cifrar tanto las claves como los valores del archivo de preferencias — `AES256_SIV` para claves,
+`AES256_GCM` para valores). La creación de `EncryptedSharedPreferences` es la única parte que
+toca disco/Keystore, así que se hace una sola vez (`by lazy`) y se reutiliza. Las tres funciones
+son `suspend` (`AsyncFunction(...) Coroutine { }`, igual que `indigo-biometrics`) y corren en
+`Dispatchers.IO`, ya que tocar `SharedPreferences` es I/O aunque esté "en memoria" — no debe
+bloquear el hilo que llama.
+
+**Swift** (`IndigoSecureStoreModule.swift`) — Keychain vía `Security.framework` directo, sin
+ninguna librería de conveniencia: `SecItemCopyMatching` para leer, `SecItemUpdate` (con
+`SecItemAdd` como fallback si el item no existe todavía) para escribir, `SecItemDelete` para
+borrar. Cada función arma un diccionario de *query* (`kSecClass`, `kSecAttrService`,
+`kSecAttrAccount`) — el patrón estándar de la API de Keychain, basada en C, con diccionarios en
+vez de objetos tipados. El accesibility elegido es
+`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`: legible ya en el primer arranque tras
+desbloquear el dispositivo (necesario para que `restoreSession()` pueda leer el token apenas
+arranca la app, antes de que el usuario toque nada) y **nunca sincronizado por iCloud Keychain a
+otros dispositivos** (el token de sesión de este dispositivo no debe viajar a otro — a diferencia
+de, por ejemplo, una contraseña de una cuenta que sí tendría sentido sincronizar).
+
+**Validación de clave:** ambos lados rechazan una `key` vacía/en blanco
+(`isValidStorageKey`/`InvalidStorageKeyException` en Kotlin, `isValidStorageKey(_:)` en Swift) —
+es la única lógica pura de este módulo (Keystore/Keychain reales no se pueden testear sin
+Robolectric/un dispositivo, fuera de alcance de esta fase) y por eso es lo que cubren
+JUnit/XCTest. Es validación real en el límite del API pública del módulo, no un test inventado
+solo para tener cobertura.
+
+**`IndigoSecureStore.web.ts`:** a diferencia del stub "no disponible" de `indigo-biometrics`
+(Face ID no tiene ningún equivalente en un navegador), aquí sí hay algo razonable que hacer: un
+navegador no tiene Keystore ni Keychain, pero sí `localStorage` — se usa como mejor esfuerzo
+(**sin cifrar**, igual que hace la propia implementación web de `expo-secure-store`) para que la
+demo web (`pnpm build:web`) siga funcionando de punta a punta, sesión persistida entre recargas
+incluida. Verificado con Playwright: login → `localStorage.getItem('indigo/auth-token')` tiene
+el token → recargar la página → la app entra directo (no vuelve a Login).
+
+**Qué NO pasa por este módulo:** `theme.store.ts` sigue usando `AsyncStorage` directamente para
+la preferencia de tema — no es información sensible, y forzarla por Keystore/Keychain sería
+usar la herramienta equivocada para el trabajo (cifrar algo que no lo necesita, más lento y sin
+ningún beneficio de seguridad real).
+
 ---
 
 ## 5. Config plugins

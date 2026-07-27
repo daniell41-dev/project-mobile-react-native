@@ -7,7 +7,7 @@
 ## Estado actual
 
 **Bloque A (fundación JS/UI) completo: FASES 0–4.** El Bloque B (capa nativa Kotlin/Swift,
-FASES 5–11) es el eje del proyecto y ya tiene su primer módulo nativo real (FASE 6) — ver
+FASES 5–11) es el eje del proyecto y ya tiene dos módulos nativos reales (FASES 6–7) — ver
 `docs/04-roadmap-y-fases.md`.
 
 | Fase | Contenido | Estado |
@@ -19,6 +19,7 @@ FASES 5–11) es el eje del proyecto y ya tiene su primer módulo nativo real (F
 | FASE 4 | Charts reales en Análisis + capa REST (repos + TanStack Query) | ✅ |
 | FASE 5 | Fundamentos nativos: prebuild, recorrido Gradle/Xcode, config plugin propio | ✅ |
 | FASE 6 | Módulo nativo `indigo-biometrics`: Kotlin (BiometricPrompt) + Swift (LAContext) | ✅ |
+| FASE 7 | Módulo nativo `indigo-secure-store`: Keystore + `EncryptedSharedPreferences` / Keychain | ✅ |
 
 ---
 
@@ -71,10 +72,12 @@ RootParamList ... } } }` en `src/bootstrap/navigation/types.ts`.
 ## Autenticación
 
 Mock (no hay backend): `AuthService.login()` genera un token y lo persiste vía
-`StorageService` (interfaz propia sobre `AsyncStorage`). `authStore.restoreSession()` se llama
-una vez al arrancar `App.tsx` y gatea el splash screen junto con la carga de fuentes — así la
-sesión persiste entre reinicios sin parpadeo Login→Home. En la FASE 7 `StorageService` cambia
-de implementación (Keystore/Keychain) sin tocar `AuthService` ni ninguna pantalla (DIP).
+`StorageService` (interfaz propia). `authStore.restoreSession()` se llama una vez al arrancar
+`App.tsx` y gatea el splash screen junto con la carga de fuentes — así la sesión persiste entre
+reinicios sin parpadeo Login→Home. Desde la FASE 7, `StorageService` está respaldado por
+`modules/indigo-secure-store` (Keystore/Keychain reales, ver `docs/07` sección 4.2) — el cambio
+de `AsyncStorage` a almacenamiento cifrado nativo no tocó ni una línea de `AuthService` ni de
+ninguna pantalla (DIP puro).
 
 ## Datos y capa REST
 
@@ -113,6 +116,18 @@ genera `expo prebuild`.
 — no es un módulo sin consumir. Recorrido completo, con las decisiones de diseño (por qué
 `authenticate` resuelve en vez de rechazar, por qué `biometryType` es genérico en Android pero
 específico en iOS), en `docs/07-capa-nativa-kotlin-swift.md` sección 4.1.
+
+## Módulo nativo: almacenamiento seguro (FASE 7)
+
+`modules/indigo-secure-store` reemplaza la implementación de `StorageService` para el token de
+sesión: Android Keystore + `EncryptedSharedPreferences` (AES-256-GCM) en Kotlin, Keychain
+(`SecItemAdd`/`SecItemCopyMatching`/`SecItemUpdate`/`SecItemDelete`) en Swift. Es el ejemplo de
+libro de Strategy + DIP del proyecto — `AuthService` sigue exactamente igual que en la FASE 2,
+solo cambió qué hay detrás de la interfaz `StorageService`. `theme.store.ts` sigue en
+`AsyncStorage` a propósito: no todo dato necesita pasar por Keystore/Keychain, solo lo sensible.
+En web cae a `localStorage` (sin cifrar, solo para que la demo funcione punta a punta) —
+verificado con Playwright: login, recarga de página, la sesión sigue activa. Detalle completo en
+`docs/07-capa-nativa-kotlin-swift.md` sección 4.2.
 
 ## Qué se puede verificar en este entorno (sin Mac, sin emulador Android)
 
