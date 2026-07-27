@@ -11,4 +11,10 @@ module.exports = defineConfig([
       'no-console': ['warn', { allow: ['warn', 'error'] }],
     },
   },
+  {
+    files: ['jest.setup.js', 'jest.config.js', 'babel.config.js'],
+    languageOptions: {
+      globals: { jest: 'readonly', module: 'readonly', require: 'readonly' },
+    },
+  },
 ]);
