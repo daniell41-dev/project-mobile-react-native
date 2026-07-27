@@ -745,18 +745,37 @@ end
 **Cómo llegan los tests a `xcodebuild test` sin tocar el `.pbxproj` de la app.** A diferencia
 del TurboModule "bare" `indigo-device` (FASE 9, sección 4.4), que sí necesitó cirugía manual
 del `.pbxproj` de la app porque no es un Pod, estos cuatro módulos **sí** son Pods — así que
-CocoaPods resuelve esto solo, sin tocar `ndigo.xcodeproj` en absoluto. `expo-modules-autolinking`
-(`scripts/ios/autolinking_manager.rb`) expone una opción documentada, `use_expo_modules!(:includeTests
-=> true)`, que le pasa `:testspecs => [...]` a `pod(...)` al instalar cada módulo — el propio
-`pod` DSL nativo de CocoaPods para test specs. Con eso, `pod install` genera **dentro de
-`Pods.xcodeproj`** un target y un esquema compartido `<Módulo>-Unit-Tests` por cada pod con
-`test_spec`, listo para `xcodebuild test -workspace ndigo.xcworkspace -scheme
-IndigoConnectivity-Unit-Tests ...`, sin ninguna dependencia del target de la app. Como la
-plantilla de Expo genera `use_expo_modules!` sin argumentos, `plugins/withIndigoIosTests.ts`
-(vía `withPodfile`) reescribe esa línea a `use_expo_modules!(:includeTests => true)` en cada
-`expo prebuild` — verificado localmente inspeccionando `ios/Podfile` tras
-`expo prebuild --clean` (no se pudo correr `pod install` en este entorno: no hay gem de
-CocoaPods instalada ni Xcode).
+CocoaPods resuelve esto solo, sin tocar `ndigo.xcodeproj` en absoluto: `:testspecs => [...]`
+es el propio `pod` DSL nativo de CocoaPods para test specs, y con eso `pod install` genera
+**dentro de `Pods.xcodeproj`** un target y un esquema compartido `<Módulo>-Unit-Tests` por cada
+pod con `test_spec`, listo para `xcodebuild test -workspace ndigo.xcworkspace -scheme
+IndigoConnectivity-Unit-Tests ...`, sin ninguna dependencia del target de la app.
+
+**Primer intento, y por qué se descartó.** `expo-modules-autolinking`
+(`scripts/ios/autolinking_manager.rb`) expone una opción de un solo interruptor,
+`use_expo_modules!(:includeTests => true)`, que activa `:testspecs` para *todos* los módulos
+autolinkeados a la vez — más simple, así que fue la primera versión de
+`plugins/withIndigoIosTests.ts`. Rompió el primer `pod install` real que corrió este proyecto
+(en `ios.yml`, ver sección 4.6): `includeTests: true` también activa el `test_spec` del propio
+pod `Expo` (el SDK base de Expo), cuyo `Expo.podspec` depende de `ExpoModulesTestCore` — un pod
+interno del monorepo de Expo, no publicado ni resoluble desde este Podfile
+(`[!] Unable to find a specification for 'ExpoModulesTestCore' depended upon by 'Expo/Tests'`).
+La corrección usa el mecanismo más quirúrgico que el propio `autolinking_manager.rb` deja
+documentado en un comentario ("The module can already be added to the target, in which case
+we can just skip it. This allows us to add a pod before `use_expo_modules` to provide custom
+flags"): declarar los 4 pods propios a mano, con `:testspecs => ['Tests']`, **antes** de
+`use_expo_modules!` (sin `includeTests`) — cuando el autolinking los procesa más abajo los ve
+ya presentes y los deja tal cual, y el resto del SDK de Expo se instala normal, sin tocar sus
+test specs:
+
+```ruby
+pod 'IndigoConnectivity', :path => '../modules/indigo-connectivity/ios', :testspecs => ['Tests']
+```
+
+Verificado localmente inspeccionando `ios/Podfile` tras `expo prebuild --clean` (no se pudo
+correr `pod install` en este entorno: no hay gem de CocoaPods instalada ni Xcode) — la
+confirmación real llegó del propio check `ios` del PR de esta fase, la primera vez que un
+`pod install` de este proyecto corrió de punta a punta.
 
 **`indigo-device` queda fuera del XCTest automático, a propósito.** No tiene `.podspec` (se
 copia directo dentro del target de la app por `plugins/withIndigoDevice.ts`), así que no hay
@@ -809,10 +828,11 @@ generación del manifest/plist no lo necesita).
 **FASE 11 añade dos plugins más**, cada uno enfocado en una sola cosa (a propósito, en vez de
 seguir creciendo `withIndigo.ts`):
 
-- `plugins/withIndigoIosTests.ts` — `withPodfile(config, config => ...)` reescribe la línea
-  `use_expo_modules!` (sin argumentos, la que trae la plantilla) a
-  `use_expo_modules!(:includeTests => true)`, para que CocoaPods genere los esquemas
-  `<Módulo>-Unit-Tests` de cada `test_spec` al correr `pod install`. Ver sección 4.6.
+- `plugins/withIndigoIosTests.ts` — `withPodfile(config, config => ...)` inserta, antes de
+  `use_expo_modules!`, una línea `pod '<Módulo>', :path => '../modules/<...>/ios', :testspecs
+  => ['Tests']` por cada uno de los 4 módulos con `test_spec`, para que CocoaPods genere los
+  esquemas `<Módulo>-Unit-Tests` al correr `pod install` sin arrastrar también el `test_spec`
+  del propio SDK de Expo (que rompe la resolución de dependencias — ver sección 4.5/4.6).
 - `plugins/withIndigoAndroidRelease.ts` — `withAppBuildGradle(config, config => ...)` +
   `mergeContents` inyecta un `signingConfigs.release` que lee de 4 propiedades de Gradle
   (`INDIGO_RELEASE_STORE_FILE`/`_STORE_PASSWORD`/`_KEY_ALIAS`/`_KEY_PASSWORD`) si existen, y

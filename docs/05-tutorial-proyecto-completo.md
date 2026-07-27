@@ -203,7 +203,10 @@ recursivo que arrastraba también sus propios archivos `Tests/*.swift` al target
 del pod en vez de a un target de test separado — nunca se manifestó porque nada había corrido
 `pod install`/`xcodebuild` de verdad hasta ahora. Se corrigió con un bloque `test_spec` en cada
 podspec (mismo patrón que usa el propio `ExpoModulesCore.podspec`) y un config plugin
-(`plugins/withIndigoIosTests.ts`) que activa `includeTests: true` en el Podfile generado.
+(`plugins/withIndigoIosTests.ts`) que declara cada uno de los 4 pods a mano con
+`:testspecs => ['Tests']` antes de `use_expo_modules!` en el Podfile generado — el interruptor
+global `includeTests: true` (primer intento) rompió el primer `pod install` real de este
+proyecto al activar también el `test_spec` del propio SDK de Expo, ver `docs/07` sección 4.6.
 `modules/indigo-device` (el TurboModule "bare" de la FASE 9) queda fuera del XCTest automático a
 propósito — no es un Pod, así que no tiene `test_spec`; detalle en `docs/07` sección 4.6.
 `eas.json` (perfiles `development`/`preview`/`production`) y `.github/workflows/pages.yml`

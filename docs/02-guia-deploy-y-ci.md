@@ -103,10 +103,13 @@ Este es el workflow que resuelve "no tengo Mac": el runner sí la tiene.
 - run: |
     # Cada módulo con test_spec en su .podspec (biometrics, secure-store, card-view,
     # connectivity) obtiene de CocoaPods un esquema "<Módulo>-Unit-Tests" al correr
-    # `pod install` con includeTests: true (plugins/withIndigoIosTests.ts). El workflow
-    # los DESCUBRE con `xcodebuild -list -json` en vez de hardcodear los 4 nombres —
-    # el sufijo exacto no se pudo confirmar sin una Mac real — y corre
-    # `xcodebuild test -scheme <cada uno>` sobre todos los que encuentre.
+    # `pod install` (plugins/withIndigoIosTests.ts declara cada pod a mano con
+    # :testspecs => ['Tests'] antes de use_expo_modules! — el interruptor global
+    # includeTests: true rompió el primer pod install real de este proyecto, ver
+    # docs/07 sección 4.5/4.6). El workflow DESCUBRE los esquemas con
+    # `xcodebuild -list -json` en vez de hardcodear los 4 nombres — el sufijo exacto no
+    # se pudo confirmar sin una Mac real — y corre `xcodebuild test -scheme <cada uno>`
+    # sobre todos los que encuentre.
 ```
 
 Esto **compila el Swift de `modules/*/ios/*.swift` de verdad** (vía CocoaPods, más el
