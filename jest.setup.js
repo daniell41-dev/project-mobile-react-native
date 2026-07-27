@@ -35,3 +35,16 @@ jest.mock('@modules/indigo-secure-store/src/IndigoSecureStore', () => ({
     }),
   },
 }));
+
+// modules/indigo-device es un TurboModule "bare" (sin Expo Modules API): no tiene el
+// registerWebModule/mock automático de los otros módulos, así que TurboModuleRegistry
+// .getEnforcing revienta en Jest igual que en la plataforma web (ver
+// modules/indigo-device/src/NativeIndigoDevice.web.ts, el mismo stub se usa aquí).
+jest.mock('@modules/indigo-device/src/NativeIndigoDevice', () => ({
+  __esModule: true,
+  default: {
+    getDeviceName: jest.fn(() => 'Navegador web'),
+    isTablet: jest.fn(() => false),
+    getBatteryLevelAsync: jest.fn().mockResolvedValue(-1),
+  },
+}));

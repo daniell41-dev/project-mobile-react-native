@@ -64,5 +64,13 @@
     "onlyBuiltDependencies": [
       "@parcel/watcher"
     ]
+  },
+  "codegenConfig": {
+    "name": "IndigoDeviceSpec",
+    "type": "modules",
+    "jsSrcsDir": "modules/indigo-device/src",
+    "android": {
+      "javaPackageName": "dev.daniell.indigo.modules.device"
+    }
   }
 }

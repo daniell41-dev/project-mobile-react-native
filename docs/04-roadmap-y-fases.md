@@ -108,9 +108,14 @@ state hoisting en Compose vs reasignar `rootView` en SwiftUI. Tests: JUnit + XCT
 `parseAccentColor` (validación de un string arbitrario desde JS) + mock en Jest.
 
 ### FASE 9 — TurboModule "bare" con Codegen (`modules/indigo-device`)
-Sin Expo Modules API: spec TS → Codegen → Kotlin (`NativeIndigoDeviceSpec`) + Swift/ObjC++.
-Documenta JSI, Codegen y por qué React Native 0.82+ es *bridgeless* (el bridge legacy fue
-eliminado; ver `docs/07`).
+Sin Expo Modules API: spec TS → Codegen → Kotlin (`NativeIndigoDeviceSpec`) + Objective-C++
+(`NativeIndigoDeviceSpec`/`NativeIndigoDeviceSpecJSI`). `getDeviceName()`/`isTablet()`
+síncronos (JSI) + `getBatteryLevelAsync()` async. Sin autolinking: `plugins/withIndigoDevice.ts`
+registra el módulo a mano (copia el código a `android/`/`ios/`, inyecta
+`MainApplication.kt`, añade los archivos al `.pbxproj`). Documenta JSI, Codegen y por qué
+React Native 0.82+ es *bridgeless* (el bridge legacy fue eliminado; ver `docs/07` 4.4).
+Verificado corriendo Codegen localmente (`node node_modules/react-native/scripts/
+generate-codegen-artifacts.js`, no necesita SDK/Xcode) contra el spec real.
 
 ### FASE 10 — Kotlin en profundidad: concurrencia y testing nativo
 Corrutinas + `Flow` expuestos a JS como suscripción de eventos. Tests JUnit (Android) y XCTest

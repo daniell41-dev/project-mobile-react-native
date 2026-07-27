@@ -37,7 +37,8 @@
           "imageWidth": 180
         }
       ],
-      "./plugins/withIndigo"
+      "./plugins/withIndigo",
+      "./plugins/withIndigoDevice"
     ]
   }
 }

@@ -411,6 +411,148 @@ no-op intencional (`static alert() {}`, ver `node_modules/react-native-web/src/e
 así que no hay ningún diálogo que capturar en el navegador; es el mismo comportamiento (silencioso
 en web) que ya tienen todos los demás `Alert.alert` de la app, no algo nuevo de este módulo.
 
+### 4.4 `indigo-device` (FASE 9) — TurboModule "bare", sin Expo Modules API
+
+Los tres módulos anteriores usan **Expo Modules API**: un DSL (`Module()`/`ModuleDefinition`,
+`View()`, `Prop()`) que envuelve TurboModules por debajo y se encarga solo del autolinking,
+el registro en `MainApplication.kt`/`AppDelegate.swift` y gran parte del boilerplate de
+Codegen. Esta fase quita esa envoltura a propósito: **spec en TypeScript → Codegen → clase
+Kotlin/Objective-C++ generada → implementación a mano → registro manual**, el camino "de
+verdad" que Expo Modules normalmente esconde.
+
+**Cómo se verificó sin Android SDK ni Mac** — a diferencia de las FASES 6-8, aquí sí hay una
+herramienta puramente Node.js que corre en este entorno sin ninguna limitación:
+
+```bash
+node node_modules/react-native/scripts/generate-codegen-artifacts.js -p . -t all -o /tmp/out
+```
+
+Este es el mismo script que Gradle/CocoaPods invocan por debajo en una build real. Correrlo a
+mano parseó `modules/indigo-device/src/NativeIndigoDevice.ts` de verdad y generó el Kotlin/
+Objective-C++ real — la implementación de este módulo está escrita contra esa salida
+inspeccionada, no adivinada. Fue la verificación más fuerte de todo el Bloque B hasta ahora.
+
+**El spec** (`NativeIndigoDevice.ts`):
+
+```ts
+export interface Spec extends TurboModule {
+  getDeviceName(): string;
+  isTablet(): boolean;
+  getBatteryLevelAsync(): Promise<number>;
+}
+export default TurboModuleRegistry.getEnforcing<Spec>('IndigoDevice');
+```
+
+`getDeviceName`/`isTablet` son **síncronos** — sin `Promise`, JS llama directo y obtiene la
+respuesta en el mismo tick. Esto es exactamente lo que JSI hace posible (sección 1): antes del
+bridge nuevo, **todo** método nativo era forzosamente asíncrono (mensajes JSON serializados por
+un puente); con JSI, JS tiene una referencia directa al objeto C++/nativo y puede invocarlo
+síncronamente. `codegenConfig` en el **`package.json` raíz de la app** (no un `expo-module.config.json`
+— este módulo no es un paquete separado) le dice a Codegen dónde está el spec:
+
+```json
+"codegenConfig": {
+  "name": "IndigoDeviceSpec",
+  "type": "modules",
+  "jsSrcsDir": "modules/indigo-device/src"
+}
+```
+
+**Lo que Codegen generó de verdad** (Android, `NativeIndigoDeviceSpec.java`):
+
+```java
+public abstract class NativeIndigoDeviceSpec extends ReactContextBaseJavaModule implements TurboModule {
+  public static final String NAME = "IndigoDevice";
+  @ReactMethod(isBlockingSynchronousMethod = true)
+  public abstract String getDeviceName();
+  @ReactMethod(isBlockingSynchronousMethod = true)
+  public abstract boolean isTablet();
+  @ReactMethod
+  public abstract void getBatteryLevelAsync(Promise promise);
+}
+```
+
+`isBlockingSynchronousMethod = true` es la marca que Codegen pone en los dos métodos síncronos;
+`getBatteryLevelAsync` en cambio recibe un `Promise` extra como último parámetro (el patrón
+clásico de RN, no corrutinas — un TurboModule "bare" en Kotlin no usa
+`AsyncFunction(...) Coroutine {}` porque eso es sintaxis de Expo Modules API, no del sistema de
+TurboModules en sí). `IndigoDeviceModule.kt` extiende esa clase abstracta y la implementa;
+`IndigoDevicePackage.kt` es un `BaseReactPackage` — el registro manual explícito que Expo
+Modules genera solo.
+
+**Lo que Codegen generó de verdad** (iOS, `IndigoDeviceSpec.h`):
+
+```objc
+@protocol NativeIndigoDeviceSpec <RCTBridgeModule, RCTTurboModule>
+- (NSString *)getDeviceName;
+- (NSNumber *)isTablet;   // nota: NSNumber*, no BOOL — así empaqueta Codegen los booleanos
+- (void)getBatteryLevelAsync:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject;
+@end
+```
+
+`IndigoDevice.mm` implementa este protocolo en **Objective-C++** (no Swift): la interoperabilidad
+Swift↔protocolo-generado-por-Codegen para TurboModules es más nueva y con más piezas móviles que
+Objective-C++, que es el camino tradicional y mejor documentado — con `RCT_EXPORT_MODULE`,
+`RCT_EXPORT_SYNCHRONOUS_TYPED_METHOD` (para los dos métodos síncronos) y `RCT_EXPORT_METHOD`
+(para el asíncrono), calcado del propio `AsyncStorage.mm` de `@react-native-async-storage/
+async-storage` (instalado en `node_modules`, es la referencia real usada para escribir esto).
+
+**Sin autolinking — registro manual de verdad.** Como este módulo no tiene
+`expo-module.config.json`, `expo-modules-autolinking` no lo ve. Sin autolinking automático, el
+código nativo tiene que llegar a `android/`/`ios/` (generados, gitignored) y quedar registrado
+cada vez que se corre `expo prebuild`. Eso es exactamente lo que hace `plugins/withIndigoDevice.ts`,
+a mano, con las piezas de `@expo/config-plugins`:
+
+- `withDangerousMod('android', ...)` — copia `IndigoDeviceModule.kt`/`IndigoDevicePackage.kt` a
+  `android/app/src/main/java/dev/daniell/indigo/modules/device/` (el módulo vive en el propio
+  módulo `:app` de Gradle porque el `codegenConfig` está en el `package.json` de la app, no en
+  uno propio — Codegen generó `NativeIndigoDeviceSpec` como parte de la compilación de `:app`).
+- `withMainApplication(...)` + `mergeContents(...)` — inyecta el `import` y
+  `add(IndigoDevicePackage())` dentro de `PackageList(this).packages.apply { }` en
+  `MainApplication.kt`, con marcadores `@generated begin/end` (idempotente: correr prebuild de
+  nuevo no duplica la línea). **Verificado**: se corrió `expo prebuild --clean` en este entorno
+  y se inspeccionó el `MainApplication.kt` resultante — el import y el `add(...)` quedaron
+  exactamente donde debían.
+- `withDangerousMod('ios', ...)` — copia `IndigoDevice.h`/`IndigoDevice.mm` a
+  `ios/<target>/IndigoDevice/` (la ruta real se obtiene con `IOSConfig.Paths.getSourceRoot(...)`,
+  no se asume "ndigo" a mano — ver el gotcha del nombre del proyecto en la sección 3).
+- `withXcodeProject(...)` — a diferencia de Android, en iOS **no hace falta tocar
+  `AppDelegate.swift`**: `RCT_EXPORT_MODULE` registra el módulo por introspección del runtime de
+  Objective-C (escanea clases que conforman `RCTBridgeModule` al arrancar), no por una lista
+  estática como `PackageList` en Android — una asimetría real entre plataformas, buena para una
+  entrevista. Lo que sí hace falta es que Xcode **compile** los archivos, y Xcode no descubre
+  archivos sueltos en una carpeta solo por estar ahí (a diferencia de Gradle): hay que añadirlos
+  al `.pbxproj` a mano, con el paquete `xcode` (el mismo que usa `@expo/config-plugins` por
+  debajo) vía `project.addSourceFile(...)`/`addHeaderFile(...)`, encontrando el grupo y el
+  target correctos (`project.findPBXGroupKey({ name: ... })`, `project.getFirstTarget()`).
+  **Verificado**: se corrió `expo prebuild --clean` y se inspeccionó el `.pbxproj` resultante —
+  `IndigoDevice.h`/`.mm` aparecen como `PBXFileReference`, dentro del grupo correcto, y
+  `IndigoDevice.mm` quedó referenciado en el `PBXSourcesBuildPhase` real del target de la app
+  (se compila). Nota: el paquete `xcode` es viejo y no reconoce la extensión `.mm` en su tabla
+  interna (`FILETYPE_BY_EXTENSION` en `node_modules/xcode/lib/pbxFile.js` solo tiene `.m`, no
+  `.mm`) — el comentario generado en el `.pbxproj` dice *"IndigoDevice.mm in Resources"*, que es
+  cosmético y engañoso (el propio archivo confirma que la entrada vive en la sección
+  `PBXSourcesBuildPhase`, no en `PBXResourcesBuildPhase`: sí se compila). Lo que **no** se pudo
+  verificar en este entorno es que Xcode realmente abra y compile el proyecto así — eso queda
+  para CI (FASE 11) o un Mac real.
+
+**Sin fallback web automático.** Los módulos de Expo Modules API tienen `registerWebModule` +
+un archivo `.web.ts` que Metro resuelve solo. Un TurboModule "bare" no tiene ese mecanismo — pero
+Metro sí resuelve extensiones `.web.ts` por plataforma para **cualquier** módulo, no solo los de
+Expo, así que `NativeIndigoDevice.web.ts` cumple el mismo papel a mano, con un objeto plano que
+satisface la interfaz `Spec` (que solo pide los tres métodos — `TurboModule` en sí es case
+prácticamente vacía: `interface TurboModule { getConstants?(): {} }`).
+
+**Consumo:** `core/services/device.service.ts` (mismo patrón facade que los otros tres módulos),
+usado de verdad en la fila "Diagnóstico del dispositivo" de `ProfileScreen` — llama
+`getDeviceName()`/`isTablet()` (síncronos) y `getBatteryLevelAsync()` (async) en la misma
+interacción, mostrando ambos estilos de una vez. Verificado con Playwright sobre el fallback
+web: tocar la fila no lanza ningún error de página.
+
+**Tests:** `isTabletScreenLayout`/`IndigoDeviceIsTabletIdiom` — funciones libres, mismo patrón
+que en las FASES 6-8, cubiertas por JUnit y XCTest respectivamente (no ejecutables localmente,
+igual que el resto de la capa nativa — quedan para CI en la FASE 11).
+
 ---
 
 ## 5. Config plugins
