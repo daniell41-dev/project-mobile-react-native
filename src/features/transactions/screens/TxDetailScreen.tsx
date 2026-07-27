@@ -1,9 +1,9 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { Alert, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, View } from 'react-native';
 
 import { HomeStackParamList } from '@/bootstrap/navigation/types';
-import { DataService } from '@/core/services/data.service';
+import { useTransactionsQuery } from '@/core/queries/transactions.queries';
 import { AppText } from '@/shared/components/AppText';
 import { Button } from '@/shared/components/Button';
 import { Chip } from '@/shared/components/Chip';
@@ -19,9 +19,16 @@ type Props = NativeStackScreenProps<HomeStackParamList, 'TxDetail'>;
 
 export function TxDetailScreen({ route }: Props) {
   const theme = useTheme();
-  const transaction = DataService.getTransactions().find(
-    (tx) => tx.id === route.params.transactionId,
-  );
+  const { data: transactions, isLoading } = useTransactionsQuery();
+  const transaction = transactions?.find((tx) => tx.id === route.params.transactionId);
+
+  if (isLoading) {
+    return (
+      <Screen style={styles.centered}>
+        <ActivityIndicator color={theme.colors.accent} />
+      </Screen>
+    );
+  }
 
   if (!transaction) {
     return (
@@ -82,6 +89,10 @@ export function TxDetailScreen({ route }: Props) {
 }
 
 const styles = StyleSheet.create({
+  centered: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   container: {
     alignItems: 'center',
     paddingTop: 24,

@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { SectionList, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, SectionList, StyleSheet, View } from 'react-native';
 
 import { TransactionsStackParamList } from '@/bootstrap/navigation/types';
-import { DataService } from '@/core/services/data.service';
+import { useTransactionsQuery } from '@/core/queries/transactions.queries';
 import { AppText } from '@/shared/components/AppText';
 import { Screen } from '@/shared/components/Screen';
 import { SearchBar } from '@/shared/components/SearchBar';
@@ -21,9 +21,10 @@ export function TransactionsScreen({ navigation }: Props) {
   const theme = useTheme();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('Todos');
+  const { data: transactions, isLoading } = useTransactionsQuery();
 
   const sections = useMemo(() => {
-    const all = DataService.getTransactions();
+    const all = transactions ?? [];
     const byType = all.filter((tx) => {
       if (filter === 'Ingresos') return tx.amount >= 0;
       if (filter === 'Gastos') return tx.amount < 0;
@@ -34,7 +35,7 @@ export function TransactionsScreen({ navigation }: Props) {
       : byType;
 
     return groupTransactionsByDay(bySearch);
-  }, [filter, query]);
+  }, [transactions, filter, query]);
 
   return (
     <Screen padded={false}>
@@ -48,30 +49,34 @@ export function TransactionsScreen({ navigation }: Props) {
         </View>
       </View>
 
-      <SectionList
-        sections={sections}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingHorizontal: theme.spacing.screenPadding }}
-        stickySectionHeadersEnabled
-        renderSectionHeader={({ section }) => (
-          <View style={[styles.sectionHeader, { backgroundColor: theme.colors.bg }]}>
-            <AppText variant="subtitle" tone="textMute">
-              {section.title}
+      {isLoading ? (
+        <ActivityIndicator color={theme.colors.accent} style={styles.loading} />
+      ) : (
+        <SectionList
+          sections={sections}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingHorizontal: theme.spacing.screenPadding }}
+          stickySectionHeadersEnabled
+          renderSectionHeader={({ section }) => (
+            <View style={[styles.sectionHeader, { backgroundColor: theme.colors.bg }]}>
+              <AppText variant="subtitle" tone="textMute">
+                {section.title}
+              </AppText>
+            </View>
+          )}
+          renderItem={({ item }) => (
+            <TransactionRow
+              transaction={item}
+              onPress={() => navigation.navigate('TxDetail', { transactionId: item.id })}
+            />
+          )}
+          ListEmptyComponent={
+            <AppText variant="body" tone="textDim" style={styles.empty}>
+              No hay movimientos que coincidan.
             </AppText>
-          </View>
-        )}
-        renderItem={({ item }) => (
-          <TransactionRow
-            transaction={item}
-            onPress={() => navigation.navigate('TxDetail', { transactionId: item.id })}
-          />
-        )}
-        ListEmptyComponent={
-          <AppText variant="body" tone="textDim" style={styles.empty}>
-            No hay movimientos que coincidan.
-          </AppText>
-        }
-      />
+          }
+        />
+      )}
     </Screen>
   );
 }
@@ -86,6 +91,9 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     paddingVertical: 8,
+  },
+  loading: {
+    marginTop: 24,
   },
   empty: {
     textAlign: 'center',

@@ -57,7 +57,10 @@ interacciones (ocultar saldo, filtros, buscadores, agrupación por día, toggles
 ### FASE 4 — Charts + capa REST
 Análisis con donut + barras (`react-native-gifted-charts`) y segmento Semana/Mes/Año.
 `TransactionRepository` (interfaz) + `InMemory*`/`Http*` (Strategy) + Adapter DTO→modelo +
-TanStack Query + MSW.
+TanStack Query. `HttpTransactionRepository` se prueba con `fetch` mockeado — MSW se
+descartó para este unit test: su dependencia `rettime` se publica solo como ESM (`.mjs`)
+y forzar a Jest a transformarla añadía fragilidad sin aportar valor sobre un mock de
+`fetch` directo para un test de repositorio.
 
 ---
 
