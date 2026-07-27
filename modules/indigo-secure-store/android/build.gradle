@@ -18,5 +18,14 @@ android {
 }
 
 dependencies {
-  implementation 'androidx.security:security-crypto:1.0.0'
+  // 1.0.0 (la última estable) no tiene MasterKey/MasterKey.Builder -- esa API llegó en la
+  // línea 1.1.0-alpha (nunca se estabilizó del lado de Google, pero es la que expone la
+  // forma moderna recomendada de EncryptedSharedPreferences.create(context, fileName,
+  // masterKey, ...) que usa IndigoSecureStoreModule.kt). Confirmado real en CI: con 1.0.0,
+  // ./gradlew compileDebugKotlin falla con "Unresolved reference 'MasterKey'".
+  implementation 'androidx.security:security-crypto:1.1.0-alpha06'
+  // Sin esto, ./gradlew test ni siquiera compila IndigoSecureStoreModuleTest.kt --
+  // "Unresolved reference 'junit'" en cada import de org.junit.*. Confirmado real en CI
+  // (android.yml): faltaba en los 4 módulos con build.gradle propio.
+  testImplementation 'junit:junit:4.13.2'
 }

@@ -38,7 +38,9 @@
         }
       ],
       "./plugins/withIndigo",
-      "./plugins/withIndigoDevice"
+      "./plugins/withIndigoDevice",
+      "./plugins/withIndigoIosTests",
+      "./plugins/withIndigoAndroidRelease"
     ]
   }
 }

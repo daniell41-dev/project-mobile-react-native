@@ -1,8 +1,11 @@
+import { execFileSync } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import {
   ConfigPlugin,
   IOSConfig,
+  withAppBuildGradle,
   withDangerousMod,
   withMainApplication,
   withPlugins,
@@ -25,6 +28,7 @@ import { mergeContents } from '@expo/config-plugins/build/utils/generateCode';
 
 const ANDROID_PACKAGE_PATH = 'dev/daniell/indigo/modules/device';
 const ANDROID_SOURCE_DIR = 'modules/indigo-device/android/src/main/java/dev/daniell/indigo/modules/device';
+const ANDROID_TEST_SOURCE_DIR = 'modules/indigo-device/android/src/test/java/dev/daniell/indigo/modules/device';
 const IOS_SOURCE_DIR = 'modules/indigo-device/ios';
 const IOS_TARGET_SUBDIR = 'IndigoDevice';
 
@@ -41,6 +45,56 @@ function copyDirSync(from: string, to: string) {
   }
 }
 
+const CODEGEN_SPEC_PACKAGE_PATH = 'com/facebook/fbreact/specs';
+const CODEGEN_SPEC_FILE_NAME = 'NativeIndigoDeviceSpec.java';
+
+// FASE 11, descubierto real en CI (android.yml): a diferencia de los módulos de las
+// FASES 6-8 (Expo Modules, autolinkeados de verdad por expo-modules-autolinking),
+// Gradle alimenta Codegen para :app a través del mismo comando de autolinking que arma
+// ios/Podfile (expo-modules-autolinking react-native-config --json) -- y ese comando NO
+// expone el codegenConfig del propio package.json raíz de la app (solo el de paquetes en
+// node_modules). :app:generateCodegenArtifactsFromSchema corre en CI pero no genera
+// NativeIndigoDeviceSpec, y compileDebugKotlin falla con "Unresolved reference". Probar
+// EXPO_USE_COMMUNITY_AUTOLINKING=1 (el escape hatch documentado en settings.gradle) se
+// descartó: verificado localmente que ese modo usa `@react-native-community/cli config`
+// puro, que en este proyecto Expo devuelve `dependencies: {}` -- rompería el codegen de
+// react-native-svg/safe-area-context/async-storage, mucho peor que el problema original.
+//
+// La corrección genera el spec a mano, con el mismo script Node que ya validó la FASE 9
+// localmente (generate-codegen-artifacts.js, sin necesitar Android SDK), y copia
+// solamente el .java de IndigoDeviceSpec directo al árbol de :app -- el resto de specs
+// que ese script también genera (de librerías que YA autolinkean bien) se descartan.
+function generateIndigoDeviceCodegenSpec(projectRoot: string, platformProjectRoot: string) {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'indigo-device-codegen-'));
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        path.join(projectRoot, 'node_modules/react-native/scripts/generate-codegen-artifacts.js'),
+        '-p',
+        projectRoot,
+        '-t',
+        'android',
+        '-o',
+        outDir,
+      ],
+      { stdio: 'inherit' },
+    );
+
+    const generated = path.join(
+      outDir,
+      'android/app/build/generated/source/codegen/java',
+      CODEGEN_SPEC_PACKAGE_PATH,
+      CODEGEN_SPEC_FILE_NAME,
+    );
+    const destDir = path.join(platformProjectRoot, 'app/src/main/java', CODEGEN_SPEC_PACKAGE_PATH);
+    fs.mkdirSync(destDir, { recursive: true });
+    fs.copyFileSync(generated, path.join(destDir, CODEGEN_SPEC_FILE_NAME));
+  } finally {
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+}
+
 const withIndigoDeviceAndroidSources: ConfigPlugin = (config) =>
   withDangerousMod(config, [
     'android',
@@ -52,9 +106,48 @@ const withIndigoDeviceAndroidSources: ConfigPlugin = (config) =>
         ANDROID_PACKAGE_PATH,
       );
       copyDirSync(from, to);
+
+      // El JUnit de este módulo (IndigoDeviceModuleTest.kt) vive en modules/ junto al
+      // resto del código -- a diferencia del lado iOS (donde Tests/ se deja fuera a
+      // propósito, ver docs/07 sección 4.6), :app SÍ tiene su propio source set
+      // src/test/java/ por ser un módulo Gradle normal, así que copiarlo ahí es
+      // suficiente para que ./gradlew test lo recoja, sin necesitar un módulo separado.
+      const testFrom = path.join(config.modRequest.projectRoot, ANDROID_TEST_SOURCE_DIR);
+      const testTo = path.join(
+        config.modRequest.platformProjectRoot,
+        'app/src/test/java',
+        ANDROID_PACKAGE_PATH,
+      );
+      if (fs.existsSync(testFrom)) {
+        copyDirSync(testFrom, testTo);
+      }
+
+      generateIndigoDeviceCodegenSpec(
+        config.modRequest.projectRoot,
+        config.modRequest.platformProjectRoot,
+      );
       return config;
     },
   ]);
+
+// El :app generado no trae testImplementation junit:junit (nada dentro de :app lo
+// necesitaba antes de que IndigoDeviceModuleTest.kt se copiara ahí arriba). Sin esto,
+// ./gradlew test falla igual que fallaba en los 4 módulos con build.gradle propio antes
+// de agregarles la misma dependencia -- "Unresolved reference 'junit'". Confirmado real
+// en CI (android.yml).
+const withIndigoDeviceAndroidTestDependency: ConfigPlugin = (config) =>
+  withAppBuildGradle(config, (config) => {
+    config.modResults.contents = mergeContents({
+      src: config.modResults.contents,
+      newSrc: "    testImplementation 'junit:junit:4.13.2'",
+      tag: 'indigo-device-test-junit',
+      anchor: /^dependencies \{$/m,
+      offset: 1,
+      comment: '    //',
+    }).contents;
+
+    return config;
+  });
 
 const withIndigoDeviceMainApplication: ConfigPlugin = (config) =>
   withMainApplication(config, (config) => {
@@ -102,8 +195,16 @@ const withIndigoDeviceXcodeProject: ConfigPlugin = (config) =>
     const groupKey = project.findPBXGroupKey({ name: groupName });
     const target = project.getFirstTarget().uuid;
 
-    const headerPath = `${IOS_TARGET_SUBDIR}/IndigoDevice.h`;
-    const sourcePath = `${IOS_TARGET_SUBDIR}/IndigoDevice.mm`;
+    // El grupo "ndigo" encontrado arriba no tiene su propio `path` en el .pbxproj (solo
+    // `name`) -- es un grupo "virtual", así que el path de cada archivo hijo se resuelve
+    // relativo al proyecto (ios/), no a ios/ndigo/. Por eso TODOS los demás archivos del
+    // grupo (AppDelegate.swift, Info.plist, ...) llevan el prefijo "ndigo/" en su propio
+    // `path` -- confirmado inspeccionando el .pbxproj real generado por expo prebuild.
+    // Sin ese prefijo, xcodebuild busca el archivo en ios/IndigoDevice/... en vez de
+    // ios/ndigo/IndigoDevice/... (donde withIndigoDeviceIosSources lo copió de verdad) y
+    // falla con "Build input file cannot be found" -- confirmado real en CI (ios.yml).
+    const headerPath = `${groupName}/${IOS_TARGET_SUBDIR}/IndigoDevice.h`;
+    const sourcePath = `${groupName}/${IOS_TARGET_SUBDIR}/IndigoDevice.mm`;
 
     if (groupKey) {
       if (!project.hasFile(headerPath)) {
@@ -120,6 +221,7 @@ const withIndigoDeviceXcodeProject: ConfigPlugin = (config) =>
 const withIndigoDevice: ConfigPlugin = (config) =>
   withPlugins(config, [
     withIndigoDeviceAndroidSources,
+    withIndigoDeviceAndroidTestDependency,
     withIndigoDeviceMainApplication,
     withIndigoDeviceIosSources,
     withIndigoDeviceXcodeProject,

@@ -1,0 +1,117 @@
+name: iOS
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+jobs:
+  build-and-test:
+    name: xcodebuild build + XCTest (macos-latest, sin Mac local)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prebuild (generate ios/)
+        run: npx expo prebuild -p ios --clean
+
+      # El nombre real del proyecto/esquema generado es "ndigo" (Expo deriva el nombre del
+      # target del campo "name" de app.json, "Índigo", y al sanear caracteres no-ASCII
+      # elimina la "Í" en vez de normalizarla a "I") -- gotcha documentado en
+      # docs/07-capa-nativa-kotlin-swift.md sección 3, confirmado corriendo prebuild
+      # localmente. CFBundleDisplayName (lo que ve el usuario) sí queda "Índigo".
+      - name: Install CocoaPods
+        working-directory: ios
+        run: pod install
+
+      - name: Pick an available iOS Simulator destination
+        id: sim
+        run: |
+          DEVICE_NAME=$(xcrun simctl list devices available -j | node -e "
+            let data = '';
+            process.stdin.on('data', (d) => (data += d));
+            process.stdin.on('end', () => {
+              const devices = JSON.parse(data).devices;
+              for (const runtime of Object.keys(devices)) {
+                if (!runtime.includes('iOS')) continue;
+                const iphone = devices[runtime].find((d) => d.name.startsWith('iPhone'));
+                if (iphone) {
+                  console.log(iphone.name);
+                  process.exit(0);
+                }
+              }
+              process.exit(1);
+            });
+          ")
+          echo "Simulador elegido: $DEVICE_NAME"
+          echo "device_name=$DEVICE_NAME" >> "$GITHUB_OUTPUT"
+
+      # Compila de verdad todo el Swift/Objective-C++ de modules/*/ios (vía CocoaPods) más
+      # el TurboModule "bare" indigo-device (copiado dentro del propio target de la app por
+      # plugins/withIndigoDevice.ts, FASE 9) -- la primera compilación real de la capa iOS
+      # de este proyecto, cerrando lo que las FASES 6-10 solo pudieron razonar/inspeccionar
+      # sin Mac (ver docs/07).
+      - name: Build app for iOS Simulator
+        working-directory: ios
+        run: |
+          xcodebuild build \
+            -workspace ndigo.xcworkspace \
+            -scheme ndigo \
+            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.device_name }}" \
+            CODE_SIGNING_ALLOWED=NO
+
+      # Cada módulo con test_spec en su .podspec (indigo-biometrics, indigo-secure-store,
+      # indigo-card-view, indigo-connectivity) obtiene de CocoaPods su propio esquema
+      # "<Módulo>-Unit-Tests" al correr `pod install` con includeTests: true
+      # (plugins/withIndigoIosTests.ts) -- se descubren por nombre en vez de hardcodearlos
+      # porque el sufijo exacto que genera CocoaPods no se pudo confirmar sin una Mac real;
+      # así el workflow se auto-adapta si CocoaPods cambia esa convención.
+      # indigo-device (TurboModule "bare", FASE 9) queda fuera a propósito: no es un Pod
+      # (se compila dentro del target de la app), así que no tiene test_spec -- ver
+      # docs/07 sección 4.4/4.6 para el detalle de por qué su XCTest no está wireado aquí.
+      - name: Discover CocoaPods test-spec schemes
+        id: schemes
+        working-directory: ios
+        run: |
+          SCHEMES=$(xcodebuild -workspace ndigo.xcworkspace -list -json | node -e "
+            let data = '';
+            process.stdin.on('data', (d) => (data += d));
+            process.stdin.on('end', () => {
+              const schemes = JSON.parse(data).workspace.schemes.filter((s) => s.includes('Unit-Tests'));
+              console.log(schemes.join(' '));
+            });
+          ")
+          echo "Esquemas de test encontrados: $SCHEMES"
+          if [ -z "$SCHEMES" ]; then
+            echo "::error::No se encontró ningún esquema *-Unit-Tests -- revisa los test_spec de modules/*/ios/*.podspec y que use_expo_modules!(:includeTests => true) siga en ios/Podfile (plugins/withIndigoIosTests.ts)."
+            exit 1
+          fi
+          echo "schemes=$SCHEMES" >> "$GITHUB_OUTPUT"
+
+      - name: Run XCTest for each native module
+        working-directory: ios
+        run: |
+          for scheme in ${{ steps.schemes.outputs.schemes }}; do
+            echo "::group::xcodebuild test -scheme $scheme"
+            xcodebuild test \
+              -workspace ndigo.xcworkspace \
+              -scheme "$scheme" \
+              -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.device_name }}" \
+              CODE_SIGNING_ALLOWED=NO
+            echo "::endgroup::"
+          done

@@ -8,11 +8,11 @@ import XCTest
 final class IndigoCardViewTests: XCTestCase {
 
   func testParsesAValidHexColor() {
-    XCTAssertEqual(parseAccentColor("#820AD1"), Color(red: 0x82.0 / 255, green: 0x0A.0 / 255, blue: 0xD1.0 / 255))
+    XCTAssertEqual(parseAccentColor("#820AD1"), Color(red: Double(0x82) / 255, green: Double(0x0A) / 255, blue: Double(0xD1) / 255))
   }
 
   func testParsesAHexColorWithoutTheLeadingHash() {
-    XCTAssertEqual(parseAccentColor("820AD1"), Color(red: 0x82.0 / 255, green: 0x0A.0 / 255, blue: 0xD1.0 / 255))
+    XCTAssertEqual(parseAccentColor("820AD1"), Color(red: Double(0x82) / 255, green: Double(0x0A) / 255, blue: Double(0xD1) / 255))
   }
 
   func testFallsBackToTheDefaultColorForInvalidInput() {
