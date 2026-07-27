@@ -28,5 +28,15 @@ Pod::Spec.new do |s|
 
   s.test_spec 'Tests' do |test_spec|
     test_spec.source_files = 'Tests/**/*.{h,m,mm,swift}'
+
+    # El target de test no hereda el OTHER_LDFLAGS -lc++ que ExpoModulesCore.podspec deja
+    # para las apps que la consumen (user_target_xcconfig) -- el bundle de test enlaza
+    # libReactCodegen.a (C++) igual, así que hay que enlazar libc++ a mano. Mismo gotcha
+    # documentado en ExpoModulesCore.podspec para su propio test_spec; confirmado real en
+    # CI (ios.yml): sin esto, el linker falla con símbolos como "operator new"/
+    # "___cxa_throw" indefinidos.
+    test_spec.pod_target_xcconfig = {
+      'OTHER_LDFLAGS' => '$(inherited) -lc++',
+    }
   end
 end

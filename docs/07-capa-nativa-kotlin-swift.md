@@ -878,8 +878,29 @@ encontró tres bugs distintos, uno por módulo:
 El job `release` (manual, `workflow_dispatch`) firma con un keystore real desde secrets — ver
 sección 8 para el detalle del `signingConfig` inyectado por `plugins/withIndigoAndroidRelease.ts`.
 
+**Dos rondas más de CI real, dos bugs más — ninguno visible sin compilar:**
+
+- **`BATTERY_SERVICE` no resolvía** (`IndigoDeviceModule.kt`) incluso después de arreglar
+  `NativeIndigoDeviceSpec`: `reactApplicationContext.getSystemService(ReactApplicationContext
+  .BATTERY_SERVICE)` — la hipótesis inicial fue que era un efecto en cascada del error
+  anterior (Kotlin no puede resolver miembros de un supertipo que a su vez no resuelve), pero
+  no era así: `BATTERY_SERVICE` es una constante estática de `android.content.Context`, y
+  Kotlin **no** la resuelve a través del nombre de una subclase Java (`ReactApplicationContext
+  .BATTERY_SERVICE`), a diferencia de Java, que sí lo permite. Corregido importando `Context`
+  y referenciando `Context.BATTERY_SERVICE` directamente.
+- **Los 4 esquemas `<Módulo>-Unit-Tests` fallaban al *linkear*, no al compilar** — `pod install`
+  y `xcodebuild build` (la app) ya estaban en verde; `xcodebuild test` fallaba con decenas de
+  símbolos C++ indefinidos (`operator new`, `___cxa_throw`, `vtable for std::length_error`...)
+  al enlazar `IndigoBiometrics-Unit-Tests` contra `libReactCodegen.a`. Es el mismo gotcha que
+  `ExpoModulesCore.podspec` ya documenta y resuelve para su propio `test_spec`: el flag
+  `-lc++` que la app consumidora recibe vía `user_target_xcconfig` no lo hereda un target de
+  test, así que hay que enlazar `libc++` a mano. Corregido añadiendo
+  `test_spec.pod_target_xcconfig = { 'OTHER_LDFLAGS' => '$(inherited) -lc++' }` a los cuatro
+  `test_spec` (biometrics, secure-store, card-view, connectivity) de una vez — el mismo
+  problema habría salido, uno por uno, en cada uno de los cuatro esquemas.
+
 **La lección de conjunto de esta fase:** cinco módulos nativos, escritos y razonados a lo largo
-de seis fases sin poder compilarlos ni una sola vez, tenían **seis bugs reales** esperando —
+de seis fases sin poder compilarlos ni una sola vez, tenían **ocho bugs reales** esperando —
 ninguno de diseño, todos de "esto no se verificó nunca de punta a punta". Ese es exactamente el
 argumento a favor de esta fase: la capa nativa de un proyecto sin CI que la compile de verdad no
 está terminada, por bien razonada que esté cada pieza por separado.

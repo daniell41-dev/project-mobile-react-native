@@ -1,5 +1,6 @@
 package dev.daniell.indigo.modules.device
 
+import android.content.Context
 import android.content.res.Configuration
 import android.os.BatteryManager
 import android.os.Build
@@ -36,9 +37,12 @@ class IndigoDeviceModule(reactContext: ReactApplicationContext) :
 
   override fun getBatteryLevelAsync(promise: Promise) {
     try {
+      // BATTERY_SERVICE es de android.content.Context, no de ReactApplicationContext --
+      // aunque ReactApplicationContext hereda de Context, Kotlin no resuelve la
+      // constante estática de Java a través del nombre de la subclase. Confirmado real
+      // en CI: "Unresolved reference 'BATTERY_SERVICE'".
       val batteryManager =
-        reactApplicationContext.getSystemService(ReactApplicationContext.BATTERY_SERVICE)
-          as BatteryManager
+        reactApplicationContext.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
       val level = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
       promise.resolve(level.toDouble())
     } catch (e: Exception) {
