@@ -162,6 +162,52 @@ manual). Requiere un paso único de configuración manual en el repo: *Settings 
 and deployment → Source: **GitHub Actions*** (no es algo que un workflow pueda activarse a sí
 mismo la primera vez).
 
+#### ⚠️ `baseUrl`: por qué la demo cargaba en blanco (bug real, corregido)
+
+La primera publicación a Pages salió **en blanco**. Causa: Pages sirve el sitio en
+`https://<usuario>.github.io/<repo>/`, no en la raíz del dominio, pero `expo export -p web`
+genera el `index.html` con rutas **absolutas**:
+
+```html
+<script src="/_expo/static/js/web/index-<hash>.js" defer></script>
+```
+
+Eso resuelve a `<usuario>.github.io/_expo/...` (raíz del dominio) → **404** → el bundle nunca
+carga → `<div id="root">` queda vacío. El `index.html` sí responde 200, así que no hay error
+visible más que en la consola del navegador: solo pantalla en blanco.
+
+Expo lo resuelve con **`experiments.baseUrl`**, que se lee únicamente de la config resuelta
+(`getBaseUrlFromExpoConfig` en `@expo/cli`) — no existe variable de entorno nativa ni flag de
+`expo export` para esto.
+
+**No se fijó en `app.json`** a propósito: eso prefijaría también `pnpm web` y `pnpm build:web`
+en local, rompiendo la verificación visual con Playwright que se sirve desde la raíz (PARTE 3
+de este documento) y que se usa en todas las fases. En su lugar hay un **`app.config.ts`** que
+extiende `app.json` (Expo lo lee primero y lo pasa como `config`) y toma el subpath de una
+variable de entorno que **solo** define `pages.yml`:
+
+```ts
+// app.config.ts
+export default ({ config }: ConfigContext): ExpoConfig => ({
+  ...(config as ExpoConfig),
+  experiments: { ...config.experiments, baseUrl: process.env.INDIGO_WEB_BASE_URL ?? '' },
+});
+```
+
+```yaml
+# pages.yml — el nombre del repo sale del propio evento, no hardcodeado
+- run: pnpm build:web
+  env:
+    INDIGO_WEB_BASE_URL: /${{ github.event.repository.name }}
+```
+
+Con eso: build local → `baseUrl` vacío, sirve desde la raíz; build de Pages → prefijo correcto.
+Verificado sirviendo `dist/` bajo un subpath idéntico al de Pages y cargándolo con Playwright
+(bundle 200, sin errores de consola, la pantalla de Onboarding renderiza).
+
+> No hace falta `404.html`: `NavigationContainer` no tiene `linking` configurado, así que la
+> URL no cambia por pantalla y no hay rutas profundas que refrescar.
+
 ### Verificación visual sin emulador ni dispositivo
 
 Con el dev server o el export web corriendo, se puede capturar con **Playwright/Chromium**

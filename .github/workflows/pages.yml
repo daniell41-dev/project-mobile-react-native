@@ -35,8 +35,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # GitHub Pages sirve este sitio en /<repo>/, no en la raíz del dominio. Sin este
+      # baseUrl, el index.html generado pide el bundle en /_expo/static/js/... (ruta
+      # absoluta a la raíz del dominio) -> 404 -> página en blanco. Lo lee app.config.ts.
+      # El nombre del repo se toma del propio evento para no hardcodearlo.
       - name: Export web (expo export -p web)
         run: pnpm build:web
+        env:
+          INDIGO_WEB_BASE_URL: /${{ github.event.repository.name }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
