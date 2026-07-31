@@ -1,0 +1,163 @@
+name: Android
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: Gradle build (debug) + JUnit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Prebuild (generate android/)
+        run: npx expo prebuild -p android --clean
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # APK debug: firma sola con el keystore de debug que trae la plantilla de Expo, no
+      # requiere ningún secret. Confirma que Kotlin de los 5 módulos de modules/*/android
+      # compila de verdad -- lo que no se puede verificar en el contenedor remoto de
+      # desarrollo (sin Android SDK ni acceso a dl.google.com, ver docs/07 sección 2).
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      # JUnit de las funciones puras de cada módulo (isTabletScreenLayout,
+      # connectivityStateFrom, parseAccentColor, ...) -- ver docs/07 sección 4. Solo los
+      # módulos propios de Índigo, no `./gradlew test` a secas: eso corre también el
+      # testDebugUnitTest de cada dependencia en node_modules (expo-modules-core,
+      # react-native-svg, ...), y `expo-modules-core:testDebugUnitTest` falla en esta
+      # combinación de Gradle/JDK con "did not discover any tests to execute" -- un
+      # problema de su propia configuración de test, no de código nuestro que se pueda
+      # arreglar aquí. Confirmado real en CI.
+      - name: Run JUnit tests (solo módulos de Índigo)
+        working-directory: android
+        run: |
+          ./gradlew \
+            :indigo-biometrics:testDebugUnitTest \
+            :indigo-secure-store:testDebugUnitTest \
+            :indigo-card-view:testDebugUnitTest \
+            :indigo-connectivity:testDebugUnitTest \
+            :app:testDebugUnitTest
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: indigo-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+
+  release:
+    name: Signed release APK/AAB (manual)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Prebuild (generate android/)
+        run: npx expo prebuild -p android --clean
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # El keystore nunca vive en el repo: se decodifica desde un secret base64 al
+      # directorio del módulo :app (donde Gradle resuelve storeFile por defecto, igual
+      # que el debug.keystore de la plantilla) y se destruye siempre al final del job, se
+      # haya firmado o no. Sin este secret configurado, este job falla explícitamente en
+      # vez de caer en silencio al keystore de debug (ver plugins/withIndigoAndroidRelease.ts
+      # para el fallback que SÍ es silencioso en el resto de builds, con propósito).
+      - name: Decode release keystore
+        env:
+          INDIGO_ANDROID_KEYSTORE_BASE64: ${{ secrets.INDIGO_ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$INDIGO_ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::error::Falta el secret INDIGO_ANDROID_KEYSTORE_BASE64 (Settings → Secrets → Actions)."
+            exit 1
+          fi
+          echo "$INDIGO_ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+
+      - name: Write release signing properties
+        run: |
+          {
+            echo "INDIGO_RELEASE_STORE_FILE=release.keystore"
+            echo "INDIGO_RELEASE_STORE_PASSWORD=${{ secrets.INDIGO_ANDROID_KEYSTORE_PASSWORD }}"
+            echo "INDIGO_RELEASE_KEY_ALIAS=${{ secrets.INDIGO_ANDROID_KEY_ALIAS }}"
+            echo "INDIGO_RELEASE_KEY_PASSWORD=${{ secrets.INDIGO_ANDROID_KEY_PASSWORD }}"
+          } >> android/gradle.properties
+
+      - name: Build signed release APK + AAB
+        working-directory: android
+        run: |
+          ./gradlew assembleRelease
+          ./gradlew bundleRelease
+
+      - name: Remove keystore from the runner
+        if: always()
+        run: rm -f android/app/release.keystore
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: indigo-release-apk
+          path: android/app/build/outputs/apk/release/*.apk
+          retention-days: 30
+
+      - name: Upload release AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: indigo-release-aab
+          path: android/app/build/outputs/bundle/release/*.aab
+          retention-days: 30

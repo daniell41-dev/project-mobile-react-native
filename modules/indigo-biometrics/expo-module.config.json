@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["IndigoBiometricsModule"]
+  },
+  "android": {
+    "modules": ["dev.daniell.indigo.modules.biometrics.IndigoBiometricsModule"]
+  }
+}

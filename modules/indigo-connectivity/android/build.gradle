@@ -1,0 +1,25 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'dev.daniell.indigo.modules.connectivity'
+version = '0.1.0'
+
+android {
+  namespace "dev.daniell.indigo.modules.connectivity"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  // Sin esto, ./gradlew test ni siquiera compila IndigoConnectivityModuleTest.kt --
+  // "Unresolved reference 'junit'" en cada import de org.junit.*. Confirmado real en CI
+  // (android.yml): faltaba en los 4 módulos con build.gradle propio.
+  testImplementation 'junit:junit:4.13.2'
+}

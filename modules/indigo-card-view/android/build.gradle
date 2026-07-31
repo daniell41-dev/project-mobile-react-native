@@ -1,0 +1,42 @@
+buildscript {
+  dependencies {
+    // Plugin del compilador de Compose (K2): requerido por CUALQUIER módulo que compile
+    // código @Composable, no solo por expo-modules-core. kotlinVersion es una propiedad
+    // extra heredada del proyecto raíz (generado por expo prebuild vía el plugin de RN).
+    classpath("org.jetbrains.kotlin.plugin.compose:org.jetbrains.kotlin.plugin.compose.gradle.plugin:${kotlinVersion}")
+  }
+}
+
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+apply plugin: 'org.jetbrains.kotlin.plugin.compose'
+
+group = 'dev.daniell.indigo.modules.cardview'
+version = '0.1.0'
+
+android {
+  namespace "dev.daniell.indigo.modules.cardview"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+  buildFeatures {
+    compose true
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  // Misma versión que ya usa expo-modules-core internamente (ver su propio
+  // android/build.gradle) — evita conflictos de resolución de versiones de Compose.
+  implementation 'androidx.compose.foundation:foundation-android:1.7.6'
+  // Sin esto, ./gradlew test ni siquiera compila IndigoCardViewTest.kt --
+  // "Unresolved reference 'junit'" en cada import de org.junit.*. Confirmado real en CI
+  // (android.yml): faltaba en los 4 módulos con build.gradle propio.
+  testImplementation 'junit:junit:4.13.2'
+}

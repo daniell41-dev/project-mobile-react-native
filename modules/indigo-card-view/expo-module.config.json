@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["IndigoCardViewModule"]
+  },
+  "android": {
+    "modules": ["dev.daniell.indigo.modules.cardview.IndigoCardViewModule"]
+  }
+}

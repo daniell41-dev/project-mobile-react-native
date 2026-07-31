@@ -53,7 +53,11 @@ npx expo prebuild --clean && cd android && ./gradlew assembleDebug && ./gradlew 
 ```
 
 (Swift se verifica en CI sobre `macos-latest`, ver `docs/02-guia-deploy-y-ci.md` — no hay Mac
-local en este entorno.)
+local en este entorno. **Desde la FASE 5:** este contenedor remoto tampoco tiene Android SDK ni
+acceso a `dl.google.com` — `./gradlew assembleDebug`/`test` no se puede ejecutar de punta a punta
+aquí; detalle en `docs/02` PARTE 4.1 y `docs/07` sección 2. En ese caso, confirma que
+`expo prebuild --clean` genera el proyecto sin error y deja la compilación real a
+`.github/workflows/android.yml`.)
 
 ## Convenciones
 
